@@ -5,8 +5,9 @@ object Dependencies {
   val akkaHttpVersion = "10.0.11"
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "0.1.16"
+  val servingGrpcScala = "dev"
   val envoyDataPlaneApi = "v1.6.0_1"
+  val catsV = "1.1.0"
 
   lazy val akkaDependencies = Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -50,5 +51,8 @@ object Dependencies {
     akkaDependencies ++
     //testDependencies ++
     akkaHttpDependencies ++
-    grpcDependencies
+    grpcDependencies ++
+    Seq(
+      "org.typelevel" %% "cats-core" % catsV
+    )
 }
