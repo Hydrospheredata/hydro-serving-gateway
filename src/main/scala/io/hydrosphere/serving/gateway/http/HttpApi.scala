@@ -29,12 +29,9 @@ class HttpApi(
     case p: Throwable =>
       logger.error(p.getMessage, p)
       complete(
-        HttpResponse(
-          StatusCodes.InternalServerError,
-          entity = Map(
-            "error" -> "InternalUncatched",
-            "information" -> Option(p.getMessage).getOrElse("Unknown error (exception message == null)")
-          ).toJson.toString()
+        StatusCodes.InternalServerError -> Map(
+          "error" -> "InternalUncaught",
+          "information" -> Option(p.getMessage).getOrElse("Unknown error (exception message == null)")
         )
       )
   }

@@ -52,8 +52,8 @@ object GWApplication {
                 runtimeId = service.runtime.map(_.id).getOrElse(0L),
                 modelVersionId = service.modelVersion.map(_.id),
                 weight = service.weight
-              )}
-          )}
+              )}.toList
+          )}.toList
       )}
 
     val namespace = if (app.namespace.isEmpty) {

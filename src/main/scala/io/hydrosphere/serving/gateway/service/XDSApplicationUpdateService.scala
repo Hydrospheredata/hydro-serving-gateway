@@ -1,6 +1,5 @@
 package io.hydrosphere.serving.gateway.service
 
-import com.google.protobuf.any.Any
 import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
