@@ -27,7 +27,7 @@ import spray.json.{JsObject, JsValue}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Try}
 
-trait GatewayPredictionService {
+trait ApplicationExecutionService {
 
   def serveJsonApplication(jsonServeRequest: JsonServeRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsValue]
 
@@ -52,13 +52,12 @@ private case class StageInfo(
 )
 
 
-class GatewayPredictionServiceImpl(
+class ApplicationExecutionServiceImpl(
   applicationConfig: ApplicationConfig,
-  applicationStorage: ApplicationStorage,
+  applicationStorage: ApplicationStorageImpl,
   predictGrpcClient: PredictionServiceGrpc.PredictionServiceStub,
   profilerGrpcCliennt: DataProfilerServiceGrpc.DataProfilerServiceStub
-)(implicit val ex: ExecutionContext) extends Logging {
-
+)(implicit val ex: ExecutionContext) extends ApplicationExecutionService with Logging {
 
   private def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit): Unit = {
     if (applicationConfig.shadowingOn) {
@@ -276,7 +275,7 @@ class GatewayPredictionServiceImpl(
   def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
     data.modelSpec match {
       case Some(modelSpec) =>
-        applicationStorage.getApplication(modelSpec.name) match {
+        applicationStorage.get(modelSpec.name) match {
           case Right(app) =>
             serveApplication(app, data, tracingInfo)
           case Left(error) =>
@@ -287,7 +286,7 @@ class GatewayPredictionServiceImpl(
   }
 
   def serveJsonApplication(jsonServeRequest: JsonServeRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsObject] = {
-    applicationStorage.getApplication(jsonServeRequest.targetId) match {
+    applicationStorage.get(jsonServeRequest.targetId) match {
       case Right(application) =>
         val signature = application.contract.signatures
           .find(_.signatureName == jsonServeRequest.signatureName)

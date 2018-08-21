@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import io.hydrosphere.serving.gateway.service.{GatewayPredictionService, RequestTracingInfo}
+import io.hydrosphere.serving.gateway.service.{ApplicationExecutionService, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.Headers
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionService
@@ -9,7 +9,7 @@ import org.apache.logging.log4j.scala.Logging
 import scala.concurrent.{ExecutionContext, Future}
 
 class GrpcPredictionService(
-  gatewayPredictionService: GatewayPredictionService
+  gatewayPredictionService: ApplicationExecutionService
 )(implicit ec: ExecutionContext) extends PredictionService with Logging {
 
   override def predict(request: PredictRequest): Future[PredictResponse] = {

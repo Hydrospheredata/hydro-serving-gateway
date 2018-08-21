@@ -5,7 +5,7 @@ object Dependencies {
   val akkaHttpVersion = "10.0.11"
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "dev"
+  val servingGrpcScala = "dev1"
   val envoyDataPlaneApi = "v1.6.0_1"
   val catsV = "1.1.0"
 
@@ -31,14 +31,14 @@ object Dependencies {
     "io.hydrosphere" %% "envoy-data-plane-api" % envoyDataPlaneApi exclude("com.google.api.grpc", "proto-google-common-protos")
   )
 
-  /*lazy val testDependencies = Seq(
-    "org.mockito" % "mockito-all" % "1.10.19" % "test,it",
-    "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion % "test,it",
-    "com.dimafeng" %% "testcontainers-scala" % "0.7.0" % "test,it",
-    "org.scalactic" %% "scalactic" % scalaTestVersion % "test,it",
-    "org.scalatest" %% "scalatest" % scalaTestVersion % "test,it",
-    "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test,it"
-  )*/
+  lazy val testDependencies = Seq(
+    "org.mockito" % "mockito-all" % "1.10.19" % "test",
+    "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion % "test",
+    "com.dimafeng" %% "testcontainers-scala" % "0.7.0" % "test",
+    "org.scalactic" %% "scalactic" % scalaTestVersion % "test",
+    "org.scalatest" %% "scalatest" % scalaTestVersion % "test",
+    "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test"
+  )
 
   lazy val logDependencies = Seq(
     "org.apache.logging.log4j" % "log4j-api" % log4j2Version,
@@ -49,10 +49,11 @@ object Dependencies {
 
   lazy val hydroServingGatewayDependencies = logDependencies ++
     akkaDependencies ++
-    //testDependencies ++
+    testDependencies ++
     akkaHttpDependencies ++
     grpcDependencies ++
     Seq(
-      "org.typelevel" %% "cats-core" % catsV
+      "org.typelevel" %% "cats-core" % catsV,
+      "com.github.pureconfig" %% "pureconfig" % "0.9.1"
     )
 }
