@@ -17,7 +17,7 @@ class XDSApplicationUpdateService(
   xDSClient: AggregatedDiscoveryService
 ) extends Logging {
 
-  val typeUrl = "type.googleapis.com/io.hydrosphere.manager.Application"
+  val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
   val request = new StreamObserver[DiscoveryResponse] {
     override def onError(t: Throwable): Unit = {
