@@ -13,7 +13,7 @@ class JsonPredictionController(
   gatewayPredictionService: ApplicationExecutionService
 ) extends JsonProtocols with Logging {
 
-  def serveById = path("api" / "v1" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
+  def serveById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
     post {
       //TODO simplify optionalHeaderValueByName
       optionalHeaderValueByName(TracingHeaders.xRequestId) {

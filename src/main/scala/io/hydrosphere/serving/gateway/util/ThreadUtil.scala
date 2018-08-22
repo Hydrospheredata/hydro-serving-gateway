@@ -1,6 +1,9 @@
 package io.hydrosphere.serving.gateway.util
 
+import java.util.concurrent.TimeoutException
+
 import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 
 object ThreadUtil {
 
@@ -29,6 +32,23 @@ object ThreadUtil {
       case None =>
         Thread.sleep(sleep.toMillis)
         retryDecrease(sleep - delta, delta)(fn)
+    }
+  }
+
+  @annotation.tailrec
+  def retryExpBackoff[T](init: Duration, max: Duration)(fn : => T): T = {
+    val r = try {
+      Some(fn)
+    } catch {
+      case _: Exception if init < max => None
+      case _: Exception => throw new TimeoutException()
+    }
+
+    r match {
+      case Some(x) => x
+      case None =>
+        Thread.sleep(init.toMillis)
+        retryExpBackoff(Math.exp(init.toMillis).milliseconds, max)(fn)
     }
   }
 }
