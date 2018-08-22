@@ -51,6 +51,7 @@ dockerfile in docker := {
     label("DEPLOYMENT_TYPE", "APP")
 
     label("SERVICE_ID", "-10")
+    label("RUNTIME_ID", "-10")
     label("HS_SERVICE_MARKER", "HS_SERVICE_MARKER")
     label("DEPLOYMENT_TYPE", "APP")
     label("SERVICE_NAME", "gateway")

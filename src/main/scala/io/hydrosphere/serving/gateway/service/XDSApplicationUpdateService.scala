@@ -57,7 +57,7 @@ class XDSActor(
 
   val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
-  private val timer = context.system.scheduler.schedule(3.seconds, 5.seconds, self, Tick)
+  private val timer = context.system.scheduler.schedule(3.seconds, 10.seconds, self, Tick)
 
   final override def receive: Receive = connecting
 
@@ -75,7 +75,7 @@ class XDSActor(
 
   def listening(response: StreamObserver[DiscoveryRequest]): Receive = {
     case GetUpdates => update(response)
-//    case Tick => update(response) // FIXME keepalive?
+    case Tick => update(response) // FIXME keepalive?
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {
