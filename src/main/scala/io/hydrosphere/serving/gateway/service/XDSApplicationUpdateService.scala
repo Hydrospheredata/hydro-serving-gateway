@@ -6,7 +6,7 @@ import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
 import io.grpc.stub.StreamObserver
 import io.hydrosphere.serving.gateway.service.XDSActor.{GetUpdates, Tick}
-import io.hydrosphere.serving.manager.grpc.applications.{Application => ProtoApplication}
+import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration._
@@ -36,10 +36,13 @@ class XDSActor(
   val observer = new StreamObserver[DiscoveryResponse] {
     override def onError(t: Throwable): Unit = {
       log.error("Application stream exception: {}", t.getMessage)
-      context become connecting(timer())
+      context become connecting
     }
 
-    override def onCompleted(): Unit = log.info("Application stream closed")
+    override def onCompleted(): Unit = {
+      log.info("Application stream closed")
+      context become connecting
+    }
 
     override def onNext(value: DiscoveryResponse): Unit = {
       log.info(s"Discovery stream update: $value")
@@ -47,25 +50,22 @@ class XDSActor(
       val applications = value.resources.flatMap { resource =>
         Try(resource.unpack(ProtoApplication)).toOption
       }
-      log.info(s"Discovered applications: $applications")
+      log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
       applicationStorage.update(applications, value.versionInfo)
     }
   }
 
   val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
-  private def timer() = {
-    context.system.scheduler.scheduleOnce(3.seconds, self, Tick)
-  }
+  private val timer = context.system.scheduler.schedule(3.seconds, 5.seconds, self, Tick)
 
-  final override def receive: Receive = connecting(timer())
+  final override def receive: Receive = connecting
 
-  def connecting(timer: Cancellable): Receive = {
+  def connecting: Receive = {
     case Tick =>
       log.info(s"Connecting to stream")
       try {
         val result = xDSClient.streamAggregatedResources(observer)
-        timer.cancel()
         update(result)
         context become listening(result)
       } catch {
@@ -75,6 +75,7 @@ class XDSActor(
 
   def listening(response: StreamObserver[DiscoveryRequest]): Receive = {
     case GetUpdates => update(response)
+//    case Tick => update(response) // FIXME keepalive?
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {
@@ -89,6 +90,20 @@ class XDSActor(
     )
     response.onNext(request)
   }
+
+  private def prettyPrintGraph(executionGraph: ExecutionGraph) = {
+    executionGraph.stages.map { stage =>
+      s"{${stage.stageId}[${stage.services.length}]}"
+    }.mkString(",")
+  }
+
+  private def prettyPrintApps(applications: Seq[ProtoApplication]) = {
+    applications.map { app =>
+      s"Application(id=${app.id}, name=${app.name}, namespace=${app.namespace}, kafkastreaming=${app.kafkaStreaming}," +
+        s"graph=${app.executionGraph.map(prettyPrintGraph)})"
+    }.mkString("\n")
+  }
+
 }
 
 object XDSActor {

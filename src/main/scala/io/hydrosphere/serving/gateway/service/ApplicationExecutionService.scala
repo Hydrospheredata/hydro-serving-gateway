@@ -172,7 +172,7 @@ class ApplicationExecutionServiceImpl(
             Result.ok(response)
           },
           thr => {
-            logger.error("Can't send message to GATEWAY_KAFKA", thr)
+            logger.error("Can't send message to debug", thr)
             sendToDebug(ResponseOrError.Error(ExecutionError(thr.toString)), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
             thr
           }
