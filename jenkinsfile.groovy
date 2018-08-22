@@ -1,5 +1,4 @@
-def repository = 'hydro-serving'
-
+def repository = 'hydro-serving-gateway'
 
 /*
 def buildAndPublishReleaseFunction={
@@ -9,7 +8,6 @@ def buildAndPublishReleaseFunction={
 }
 */
 
-
 def buildFunction={
     //Buid serving
     def curVersion = getVersion()
@@ -17,7 +15,7 @@ def buildFunction={
 }
 
 def collectTestResults = {
-    //junit testResults: '**/target/test-reports/io.hydrosphere*.xml', allowEmptyResults: true
+    junit testResults: '**/target/test-reports/io.hydrosphere*.xml', allowEmptyResults: true
 }
 
 pipelineCommon(

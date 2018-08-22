@@ -47,9 +47,13 @@ dockerfile in docker := {
     env("APP_PORT","9090")
     env("SIDECAR_PORT","8080")
     env("SIDECAR_HOST","localhost")
-    env("MODEL_DIR","/model")
 
     label("DEPLOYMENT_TYPE", "APP")
+
+    label("SERVICE_ID", "-10")
+    label("HS_SERVICE_MARKER", "HS_SERVICE_MARKER")
+    label("DEPLOYMENT_TYPE", "APP")
+    label("SERVICE_NAME", "gateway")
 
     add(dockerFilesLocation, "/hydro-serving/app/")
     // Add all files on the classpath
