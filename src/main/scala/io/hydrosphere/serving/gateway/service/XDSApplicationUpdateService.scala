@@ -3,8 +3,11 @@ package io.hydrosphere.serving.gateway.service
 import akka.actor.{Actor, ActorLogging, ActorSystem, Cancellable, Props}
 import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
+import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
+import io.grpc.Channel
 import io.grpc.stub.StreamObserver
+import io.hydrosphere.serving.gateway.config.Inject.sidecarChannel
 import io.hydrosphere.serving.gateway.service.XDSActor.{GetUpdates, Tick}
 import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
@@ -14,10 +17,10 @@ import scala.util.Try
 
 class XDSApplicationUpdateService(
   applicationStorage: ApplicationStorage,
-  xDSClient: AggregatedDiscoveryService
+  sidecarChannel: Channel
 )(implicit actorSystem: ActorSystem) extends Logging {
 
-  val actor = actorSystem.actorOf(XDSActor.props(xDSClient, applicationStorage))
+  val actor = actorSystem.actorOf(XDSActor.props(sidecarChannel, applicationStorage))
 
   val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
@@ -27,7 +30,7 @@ class XDSApplicationUpdateService(
 }
 
 class XDSActor(
-  xDSClient: AggregatedDiscoveryService,
+  xDSChannel: Channel,
   applicationStorage: ApplicationStorage
 ) extends Actor with ActorLogging {
 
@@ -65,6 +68,7 @@ class XDSActor(
     case Tick =>
       log.info(s"Connecting to stream")
       try {
+        val xDSClient = AggregatedDiscoveryServiceGrpc.stub(sidecarChannel)
         val result = xDSClient.streamAggregatedResources(observer)
         update(result)
         context become listening(result)
@@ -91,6 +95,15 @@ class XDSActor(
     response.onNext(request)
   }
 
+  override def preStart() = {
+    log.debug("Starting")
+  }
+
+  override def preRestart(reason: Throwable, message: Option[Any]) {
+    log.error(reason, "Restarting due to [{}] when processing [{}]",
+      reason.getMessage, message.getOrElse(""))
+  }
+
   private def prettyPrintGraph(executionGraph: ExecutionGraph) = {
     executionGraph.stages.map { stage =>
       s"{${stage.stageId}[${stage.services.length}]}"
@@ -113,7 +126,7 @@ object XDSActor {
   case object GetUpdates
 
   def props(
-    xDSClient: AggregatedDiscoveryService,
+    channel: Channel,
     applicationStorage: ApplicationStorage
-  ) = Props(classOf[XDSActor], xDSClient, applicationStorage)
+  ) = Props(classOf[XDSActor], channel, applicationStorage)
 }

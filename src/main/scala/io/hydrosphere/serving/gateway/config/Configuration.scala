@@ -11,7 +11,8 @@ case class ApplicationConfig(
   grpcPort: Int,
   httpPort: Int,
   shadowingOn: Boolean,
-  shadowingDestination: String
+  profilingDestination: String,
+  monitoringDestination: String
 )
 
 final case class Configuration(
