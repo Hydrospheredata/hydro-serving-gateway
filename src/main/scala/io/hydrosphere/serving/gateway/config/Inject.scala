@@ -12,6 +12,8 @@ import io.hydrosphere.serving.gateway.grpc.GrpcApi
 import io.hydrosphere.serving.gateway.http.HttpApi
 import io.hydrosphere.serving.gateway.service.{ApplicationExecutionServiceImpl, ApplicationStorageImpl, XDSApplicationUpdateService}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
+import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringService
 import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import org.apache.logging.log4j.scala.Logging
@@ -49,6 +51,7 @@ object Inject extends Logging {
 
   implicit val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
   implicit val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
+  implicit val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
 
   logger.debug(s"Initializing application storage")
   implicit val applicationStorage = new ApplicationStorageImpl()
@@ -61,6 +64,7 @@ object Inject extends Logging {
     appConfig.application,
     applicationStorage,
     predictGrpcClient,
-    profilerGrpcClient
+    profilerGrpcClient,
+    monitoringGrpcClient
   )
 }

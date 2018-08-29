@@ -9,6 +9,8 @@
 [ -z "$GATEWAY_HTTP_PORT" ] && GATEWAY_HTTP_PORT="9090"
 [ -z "$GATEWAY_GRPC_PORT" ] && GATEWAY_GRPC_PORT="9091"
 
+[ -z "$APP_SHADOWING_ON" ] && APP_SHADOWING_ON="false"
+
 JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMX"
 
 echo "Running Manager with:"
@@ -19,6 +21,7 @@ then
     echo "Custom config does not exist"
     APP_OPTS="$APP_OPTS -Dsidecar.port=$SIDECAR_INGRESS_PORT -Dsidecar.host=$SIDECAR_HOST"
     APP_OPTS="$APP_OPTS -Dapplication.http-port=$GATEWAY_HTTP_PORT -Dapplication.grpc-port=$GATEWAY_GRPC_PORT"
+    APP_OPTS="$APP_OPTS -Dapplication.shadowing-on=$APP_SHADOWING_ON"
 
     echo "APP_OPTS=$APP_OPTS"
 

@@ -12,7 +12,7 @@ import io.hydrosphere.serving.model.api.Result.ClientError
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.monitoring.data_profile_types.DataProfileType
-import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata}
+import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc}
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -56,7 +56,8 @@ class ApplicationExecutionServiceImpl(
   applicationConfig: ApplicationConfig,
   applicationStorage: ApplicationStorageImpl,
   predictGrpcClient: PredictionServiceGrpc.PredictionServiceStub,
-  profilerGrpcCliennt: DataProfilerServiceGrpc.DataProfilerServiceStub
+  profilerGrpcClient: DataProfilerServiceGrpc.DataProfilerServiceStub,
+  monitoringGrpcClient: MonitoringServiceGrpc.MonitoringServiceStub
 )(implicit val ex: ExecutionContext) extends ApplicationExecutionService with Logging {
 
   private def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit): Unit = {
@@ -76,20 +77,19 @@ class ApplicationExecutionServiceImpl(
         responseOrError = responseOrError
       )
 
-      /*
       //TODO do we really need this?
-      grpcClientForMonitoring
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, CloudDriverService.MONITORING_NAME)
+      monitoringGrpcClient
+        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.monitoringDestination)
         .analyze(execInfo)
         .onComplete {
           case Failure(thr) =>
             logger.warn("Can't send message to the monitoring service", thr)
           case _ =>
             Unit
-        }*/
+        }
 
-      profilerGrpcCliennt
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.shadowingDestination)
+      profilerGrpcClient
+        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.profilingDestination)
         .analyze(execInfo)
         .onComplete {
           case Failure(thr) =>
@@ -98,8 +98,6 @@ class ApplicationExecutionServiceImpl(
         }
     }
   }
-
-  private def getHeaderValue(header: Header): Option[String] = Option(header.contextKey.get())
 
   private def getCurrentExecutionUnit(unit: ExecutionUnit, modelVersionIdHeaderValue: AtomicReference[String]): ExecutionUnit = Try({
     Option(modelVersionIdHeaderValue.get()).map(_.toLong)
