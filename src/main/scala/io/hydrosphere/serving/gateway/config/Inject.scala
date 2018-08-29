@@ -49,13 +49,12 @@ object Inject extends Logging {
 
   implicit val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
   implicit val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
-  implicit val serviceDiscoveryClient = AggregatedDiscoveryServiceGrpc.stub(sidecarChannel)
 
   logger.debug(s"Initializing application storage")
   implicit val applicationStorage = new ApplicationStorageImpl()
 
   logger.debug(s"Initializing application update service")
-  implicit val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, serviceDiscoveryClient)
+  implicit val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, sidecarChannel)
 
   logger.debug("Initializing app execution service")
   implicit val gatewayPredictionService = new ApplicationExecutionServiceImpl(
