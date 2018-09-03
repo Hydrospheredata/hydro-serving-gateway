@@ -1,14 +1,19 @@
 package io.hydrosphere.serving.gateway.service
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.{Actor, ActorLogging, ActorSystem, Cancellable, Props}
 import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
-import io.grpc.Channel
+import io.grpc.netty.NettyChannelBuilder
+import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.gateway.config.Inject.sidecarChannel
+import io.hydrosphere.serving.gateway.config.Inject.appConfig
+import io.hydrosphere.serving.gateway.config.SidecarConfig
 import io.hydrosphere.serving.gateway.service.XDSActor.{GetUpdates, Tick}
+import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
 
@@ -17,10 +22,10 @@ import scala.util.Try
 
 class XDSApplicationUpdateService(
   applicationStorage: ApplicationStorage,
-  sidecarChannel: Channel
+  sidecarConfig: SidecarConfig
 )(implicit actorSystem: ActorSystem) extends Logging {
 
-  val actor = actorSystem.actorOf(XDSActor.props(sidecarChannel, applicationStorage))
+  val actor = actorSystem.actorOf(XDSActor.props(sidecarConfig, applicationStorage))
 
   val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
@@ -30,7 +35,7 @@ class XDSApplicationUpdateService(
 }
 
 class XDSActor(
-  xDSChannel: Channel,
+  sidecarConfig: SidecarConfig,
   applicationStorage: ApplicationStorage
 ) extends Actor with ActorLogging {
 
@@ -68,6 +73,17 @@ class XDSActor(
     case Tick =>
       log.info(s"Connecting to stream")
       try {
+        val builder = ManagedChannelBuilder
+          .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
+
+        builder.keepAliveTime(10, TimeUnit.SECONDS)
+        builder.keepAliveWithoutCalls(true)
+        builder.enableRetry()
+        builder.usePlaintext()
+
+        val sidecarChannel: Channel = ClientInterceptors
+          .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
+
         val xDSClient = AggregatedDiscoveryServiceGrpc.stub(sidecarChannel)
         val result = xDSClient.streamAggregatedResources(observer)
         update(result)
@@ -79,7 +95,8 @@ class XDSActor(
 
   def listening(response: StreamObserver[DiscoveryRequest]): Receive = {
     case GetUpdates => update(response)
-    case Tick => update(response) // FIXME keepalive?
+    case Tick =>
+      update(response) // FIXME keepalive?
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {
@@ -126,7 +143,7 @@ object XDSActor {
   case object GetUpdates
 
   def props(
-    channel: Channel,
+    sidecarConfig: SidecarConfig,
     applicationStorage: ApplicationStorage
-  ) = Props(classOf[XDSActor], channel, applicationStorage)
+  ) = Props(classOf[XDSActor], sidecarConfig, applicationStorage)
 }
