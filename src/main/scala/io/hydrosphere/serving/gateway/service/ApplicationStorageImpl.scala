@@ -97,6 +97,16 @@ class ApplicationStorageImpl extends ApplicationStorage {
     }
   }
 
+  def listAll = {
+    val lock = rwLock.readLock()
+    try {
+      lock.lock()
+      applicationsById.values.toList
+    } finally {
+      lock.unlock()
+    }
+  }
+
   def get(name: String): HResult[GWApplication] = {
     val lock = rwLock.readLock()
     try {

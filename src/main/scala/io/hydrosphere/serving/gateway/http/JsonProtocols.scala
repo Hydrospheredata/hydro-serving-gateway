@@ -1,6 +1,7 @@
 package io.hydrosphere.serving.gateway.http
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+import io.hydrosphere.serving.gateway.service.{GWApplication, GWExecutionGraph, GWService, GWStage}
 import io.hydrosphere.serving.model.api.Result.{ClientError, ErrorCollection, HError, InternalError}
 import spray.json._
 
@@ -41,6 +42,30 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
     }
 
     override def read(json: JsValue): HError = ???
+  }
+
+  implicit val gwService = jsonFormat3(GWService.apply)
+  implicit val gwStageFormat = new RootJsonFormat[GWStage] {
+    override def write(obj: GWStage): JsValue = {
+      JsObject(
+        "id" -> JsString(obj.id),
+        "services" -> obj.services.toJson
+      )
+    }
+
+    override def read(json: JsValue): GWStage = throw new DeserializationException("GWStage reader is not implemented")
+  }
+  implicit val gwExecGraphFormat = jsonFormat1(GWExecutionGraph.apply)
+  implicit val gwAppFormat = new RootJsonFormat[GWApplication] {
+    override def write(obj: GWApplication): JsValue = {
+      JsObject(
+        "id" -> JsNumber(obj.id),
+        "name" -> JsString(obj.name),
+        "executionGraph" -> obj.executionGraph.toJson
+      )
+    }
+
+    override def read(json: JsValue): GWApplication = throw new DeserializationException("GWApplication reader is not implemented")
   }
 }
 
