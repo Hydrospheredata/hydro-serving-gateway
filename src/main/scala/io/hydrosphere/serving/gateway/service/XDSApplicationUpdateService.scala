@@ -1,5 +1,6 @@
 package io.hydrosphere.serving.gateway.service
 
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Cancellable, Props}
@@ -7,6 +8,7 @@ import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
+import io.grpc.internal.GrpcUtil
 import io.grpc.netty.NettyChannelBuilder
 import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.grpc.stub.StreamObserver
@@ -41,6 +43,11 @@ class XDSActor(
 
   import context._
 
+  val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
+
+  private val tickTimer = context.system.scheduler.schedule(10.seconds, 15.seconds, self, Tick)
+  private var lastResponse = Instant.MIN
+
   val observer = new StreamObserver[DiscoveryResponse] {
     override def onError(t: Throwable): Unit = {
       log.error("Application stream exception: {}", t.getMessage)
@@ -55,17 +62,19 @@ class XDSActor(
     override def onNext(value: DiscoveryResponse): Unit = {
       log.info(s"Discovery stream update: $value")
 
-      val applications = value.resources.flatMap { resource =>
-        Try(resource.unpack(ProtoApplication)).toOption
+      lastResponse = Instant.now()
+
+      if (value.typeUrl == typeUrl) {
+        val applications = value.resources.flatMap { resource =>
+          Try(resource.unpack(ProtoApplication)).toOption
+        }
+        log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
+        applicationStorage.update(applications, value.versionInfo)
+      } else {
+        log.info(s"Got $value message")
       }
-      log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
-      applicationStorage.update(applications, value.versionInfo)
     }
   }
-
-  val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
-
-  private val timer = context.system.scheduler.schedule(3.seconds, 10.seconds, self, Tick)
 
   final override def receive: Receive = connecting
 
@@ -75,18 +84,16 @@ class XDSActor(
       try {
         val builder = ManagedChannelBuilder
           .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
-
-        builder.keepAliveTime(10, TimeUnit.SECONDS)
-        builder.keepAliveWithoutCalls(true)
         builder.enableRetry()
         builder.usePlaintext()
 
-        val sidecarChannel: Channel = ClientInterceptors
-          .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
+        val sidecarChannel = ClientInterceptors
+          .intercept(builder.build, new AuthorityReplacerInterceptor)
+
+        log.debug(s"Created a channel: $sidecarChannel")
 
         val xDSClient = AggregatedDiscoveryServiceGrpc.stub(sidecarChannel)
         val result = xDSClient.streamAggregatedResources(observer)
-        update(result)
         context become listening(result)
       } catch {
         case err: Exception => log.warning(s"Can't connect: $err")
@@ -96,7 +103,13 @@ class XDSActor(
   def listening(response: StreamObserver[DiscoveryRequest]): Receive = {
     case GetUpdates => update(response)
     case Tick =>
-      update(response) // FIXME keepalive?
+      val now = Instant.now()
+      val lastRequiredResponse = now.minusSeconds(sidecarConfig.xdsSilentRestartSeconds)
+      if (lastResponse.isBefore(lastRequiredResponse)) {
+        log.warning(s"Didn't get XDS responses in ${sidecarConfig.xdsSilentRestartSeconds} seconds. Possible stream error. Restarting...")
+        context.become(connecting)
+      }
+      update(response)
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {

@@ -4,7 +4,8 @@ import org.apache.logging.log4j.scala.Logging
 
 case class SidecarConfig(
   host: String,
-  port: Int
+  port: Int,
+  xdsSilentRestartSeconds: Long
 )
 
 case class ApplicationConfig(
@@ -12,7 +13,7 @@ case class ApplicationConfig(
   httpPort: Int,
   shadowingOn: Boolean,
   profilingDestination: String,
-  monitoringDestination: String
+  monitoringDestination: String,
 )
 
 final case class Configuration(
