@@ -33,15 +33,10 @@ object GatewayRuntimeApp extends App with Logging {
           sys.exit(1)
       }
     }
-
-    applicationUpdater.getUpdates()
-
     logger.info("Initialization completed")
   } catch {
     case e: Throwable =>
       logger.error("Fatal error", e)
       sys.exit(1)
   }
-
-  println(scala.io.StdIn.readLine())
 }
