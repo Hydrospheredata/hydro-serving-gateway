@@ -13,6 +13,7 @@ class GrpcPredictionService(
 )(implicit ec: ExecutionContext) extends PredictionService with Logging {
 
   override def predict(request: PredictRequest): Future[PredictResponse] = {
+    logger.info(s"Got grpc request modelSpec=${request.modelSpec}")
     request.modelSpec match {
       case Some(_) =>
         val requestId = Option(Headers.XRequestId.contextKey.get())
