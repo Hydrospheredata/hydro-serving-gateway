@@ -10,37 +10,30 @@ class JsonPredictionController(
   gatewayPredictionService: ApplicationExecutionService
 ) extends JsonProtocols with Logging {
 
+  def optionalTracingHeaders = optionalHeaderValueByName(TracingHeaders.xRequestId) &
+    optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
+    optionalHeaderValueByName(TracingHeaders.xB3SpanId)
+
   def compatibleServeById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
     post {
-      //TODO simplify optionalHeaderValueByName
-      optionalHeaderValueByName(TracingHeaders.xRequestId) {
-        reqId => {
-          optionalHeaderValueByName(TracingHeaders.xB3TraceId) {
-            reqB3Id => {
-              optionalHeaderValueByName(TracingHeaders.xB3SpanId) {
-                reqB3SpanId => {
-                  entity(as[JsObject]) { bytes =>
-                    complete {
-                      logger.info(s"Serve request: id=$appId signature=$signatureName")
-                      gatewayPredictionService.serveJsonById(
-                        JsonServeByIdRequest(
-                          targetId = appId,
-                          signatureName = signatureName,
-                          inputs = bytes
-                        ),
-                        reqId.map(xRequestId =>
-                          RequestTracingInfo(
-                            xRequestId = xRequestId,
-                            xB3requestId = reqB3Id,
-                            xB3SpanId = reqB3SpanId
-                          )
-                        )
-                      )
-                    }
-                  }
-                }
-              }
-            }
+      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
+        entity(as[JsObject]) { bytes =>
+          complete {
+            logger.info(s"Serve request: id=$appId signature=$signatureName")
+            gatewayPredictionService.serveJsonById(
+              JsonServeByIdRequest(
+                targetId = appId,
+                signatureName = signatureName,
+                inputs = bytes
+              ),
+              reqId.map(xRequestId =>
+                RequestTracingInfo(
+                  xRequestId = xRequestId,
+                  xB3requestId = reqB3Id,
+                  xB3SpanId = reqB3SpanId
+                )
+              )
+            )
           }
         }
       }
@@ -55,35 +48,24 @@ class JsonPredictionController(
 
   def serveById = pathPrefix("applications" / "serveById" / LongNumber / Segment) { (appId, signatureName) =>
     post {
-      //TODO simplify optionalHeaderValueByName
-      optionalHeaderValueByName(TracingHeaders.xRequestId) {
-        reqId => {
-          optionalHeaderValueByName(TracingHeaders.xB3TraceId) {
-            reqB3Id => {
-              optionalHeaderValueByName(TracingHeaders.xB3SpanId) {
-                reqB3SpanId => {
-                  entity(as[JsObject]) { bytes =>
-                    complete {
-                      logger.info(s"Serve request: id=$appId signature=$signatureName")
-                      gatewayPredictionService.serveJsonById(
-                        JsonServeByIdRequest(
-                          targetId = appId,
-                          signatureName = signatureName,
-                          inputs = bytes
-                        ),
-                        reqId.map(xRequestId =>
-                          RequestTracingInfo(
-                            xRequestId = xRequestId,
-                            xB3requestId = reqB3Id,
-                            xB3SpanId = reqB3SpanId
-                          )
-                        )
-                      )
-                    }
-                  }
-                }
-              }
-            }
+      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
+        entity(as[JsObject]) { bytes =>
+          complete {
+            logger.info(s"Serve request: id=$appId signature=$signatureName")
+            gatewayPredictionService.serveJsonById(
+              JsonServeByIdRequest(
+                targetId = appId,
+                signatureName = signatureName,
+                inputs = bytes
+              ),
+              reqId.map(xRequestId =>
+                RequestTracingInfo(
+                  xRequestId = xRequestId,
+                  xB3requestId = reqB3Id,
+                  xB3SpanId = reqB3SpanId
+                )
+              )
+            )
           }
         }
       }
@@ -92,35 +74,24 @@ class JsonPredictionController(
 
   def serveByName = pathPrefix("applications" / "serveByName" / Segment / Segment) { (appName, signatureName) =>
     post {
-      //TODO simplify optionalHeaderValueByName
-      optionalHeaderValueByName(TracingHeaders.xRequestId) {
-        reqId => {
-          optionalHeaderValueByName(TracingHeaders.xB3TraceId) {
-            reqB3Id => {
-              optionalHeaderValueByName(TracingHeaders.xB3SpanId) {
-                reqB3SpanId => {
-                  entity(as[JsObject]) { jsObject =>
-                    complete {
-                      logger.info(s"Serve request: name=$appName signature=$signatureName")
-                      gatewayPredictionService.serveJsonByName(
-                        JsonServeByNameRequest(
-                          appName = appName,
-                          signatureName = signatureName,
-                          inputs = jsObject
-                        ),
-                        reqId.map(xRequestId =>
-                          RequestTracingInfo(
-                            xRequestId = xRequestId,
-                            xB3requestId = reqB3Id,
-                            xB3SpanId = reqB3SpanId
-                          )
-                        )
-                      )
-                    }
-                  }
-                }
-              }
-            }
+      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
+        entity(as[JsObject]) { jsObject =>
+          complete {
+            logger.info(s"Serve request: name=$appName signature=$signatureName")
+            gatewayPredictionService.serveJsonByName(
+              JsonServeByNameRequest(
+                appName = appName,
+                signatureName = signatureName,
+                inputs = jsObject
+              ),
+              reqId.map(xRequestId =>
+                RequestTracingInfo(
+                  xRequestId = xRequestId,
+                  xB3requestId = reqB3Id,
+                  xB3SpanId = reqB3SpanId
+                )
+              )
+            )
           }
         }
       }
