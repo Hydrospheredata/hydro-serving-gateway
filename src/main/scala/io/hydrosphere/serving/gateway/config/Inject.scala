@@ -46,18 +46,18 @@ object Inject extends Logging {
   builder.enableRetry()
   builder.usePlaintext()
 
-  implicit val sidecarChannel: Channel = ClientInterceptors
+  val sidecarChannel: Channel = ClientInterceptors
     .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
-  implicit val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
-  implicit val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
-  implicit val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
+  val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
+  val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
+  val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
 
   logger.debug(s"Initializing application storage")
   implicit val applicationStorage = new ApplicationStorageImpl()
 
   logger.debug(s"Initializing application update service")
-  implicit val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, sidecarChannel)
+  implicit val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.sidecar)
 
   logger.debug("Initializing app execution service")
   implicit val gatewayPredictionService = new ApplicationExecutionServiceImpl(
