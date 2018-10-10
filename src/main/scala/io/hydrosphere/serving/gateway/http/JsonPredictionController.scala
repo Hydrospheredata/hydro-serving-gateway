@@ -1,59 +1,83 @@
 package io.hydrosphere.serving.gateway.http
 
-import akka.http.scaladsl.server.Directives.{as, complete, entity, optionalHeaderValueByName, path, post, _}
-import akka.util.Timeout
-import io.hydrosphere.serving.gateway.service.{ApplicationExecutionService, JsonServeRequest, RequestTracingInfo}
+import akka.http.scaladsl.server.Directives._
+import io.hydrosphere.serving.gateway.service.{ApplicationExecutionService, JsonServeByIdRequest, JsonServeByNameRequest, RequestTracingInfo}
 import io.hydrosphere.serving.http.TracingHeaders
 import org.apache.logging.log4j.scala.Logging
 import spray.json.JsObject
-
-import scala.concurrent.duration._
 
 class JsonPredictionController(
   gatewayPredictionService: ApplicationExecutionService
 ) extends JsonProtocols with Logging {
 
-  def serveById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
+  def optionalTracingHeaders = optionalHeaderValueByName(TracingHeaders.xRequestId) &
+    optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
+    optionalHeaderValueByName(TracingHeaders.xB3SpanId)
+
+  def compatibleServeById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
     post {
-      //TODO simplify optionalHeaderValueByName
-      optionalHeaderValueByName(TracingHeaders.xRequestId) {
-        reqId => {
-          optionalHeaderValueByName(TracingHeaders.xB3TraceId) {
-            reqB3Id => {
-              optionalHeaderValueByName(TracingHeaders.xB3SpanId) {
-                reqB3SpanId => {
-                  entity(as[JsObject]) { bytes =>
-                    complete {
-                      logger.info(s"Serve request: id=$appId signature=$signatureName")
-                      gatewayPredictionService.serveJsonApplication(
-                        JsonServeRequest(
-                          targetId = appId,
-                          signatureName = signatureName,
-                          inputs = bytes
-                        ),
-                        reqId.map(xRequestId =>
-                          RequestTracingInfo(
-                            xRequestId = xRequestId,
-                            xB3requestId = reqB3Id,
-                            xB3SpanId = reqB3SpanId
-                          )
-                        )
-                      )
-                    }
-                  }
-                }
-              }
-            }
+      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
+        entity(as[JsObject]) { bytes =>
+          complete {
+            logger.info(s"Serve request: id=$appId signature=$signatureName")
+            gatewayPredictionService.serveJsonById(
+              JsonServeByIdRequest(
+                targetId = appId,
+                signatureName = signatureName,
+                inputs = bytes
+              ),
+              reqId.map(xRequestId =>
+                RequestTracingInfo(
+                  xRequestId = xRequestId,
+                  xB3requestId = reqB3Id,
+                  xB3SpanId = reqB3SpanId
+                )
+              )
+            )
           }
         }
       }
     }
   }
 
-  def serveByName = path("api" / "v1" / "serve" / Segment / Segment) { (appName, signatureName) =>
-    ???
+  def listApps = pathPrefix("applications") {
+    pathEndOrSingleSlash {
+      get {
+        complete(gatewayPredictionService.listApps)
+      }
+    }
   }
 
+  def serveByName = pathPrefix("applications" / Segment / Segment) { (appName, signatureName) =>
+    post {
+      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
+        entity(as[JsObject]) { jsObject =>
+          complete {
+            logger.info(s"Serve request: name=$appName signature=$signatureName")
+            gatewayPredictionService.serveJsonByName(
+              JsonServeByNameRequest(
+                appName = appName,
+                signatureName = signatureName,
+                inputs = jsObject
+              ),
+              reqId.map(xRequestId =>
+                RequestTracingInfo(
+                  xRequestId = xRequestId,
+                  xB3requestId = reqB3Id,
+                  xB3SpanId = reqB3SpanId
+                )
+              )
+            )
+          }
+        }
+      }
+    }
+  }
 
-  val routes = serveById
+  def appRoutes = pathPrefix("gateway") {
+    listApps ~ serveByName
+  }
+
+  val routes = compatibleServeById ~ appRoutes
+
 }
