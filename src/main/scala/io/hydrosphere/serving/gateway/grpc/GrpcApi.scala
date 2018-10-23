@@ -16,7 +16,7 @@ class GrpcApi(
 
   private[this] val builder = BuilderWrapper(NettyServerBuilder
     .forPort(appConfig.grpcPort)
-    .maxMessageSize(512 * 1024 * 1024))
+    .maxMessageSize(appConfig.maxMessageSize))
 
   val predictionService = new GrpcPredictionService(gatewayPredictionService)
 

@@ -11,6 +11,8 @@
 
 [ -z "$APP_SHADOWING_ON" ] && APP_SHADOWING_ON="false"
 
+[ -z "$MAX_MESSAGE_SIZE" ] && MAX_MESSAGE_SIZE="536870912"
+
 JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMX"
 
 echo "Running Manager with:"
@@ -22,6 +24,7 @@ then
     APP_OPTS="$APP_OPTS -Dsidecar.port=$SIDECAR_INGRESS_PORT -Dsidecar.host=$SIDECAR_HOST"
     APP_OPTS="$APP_OPTS -Dapplication.http-port=$GATEWAY_HTTP_PORT -Dapplication.grpc-port=$GATEWAY_GRPC_PORT"
     APP_OPTS="$APP_OPTS -Dapplication.shadowing-on=$APP_SHADOWING_ON"
+    APP_OPTS="$APP_OPTS -Dapplication.max-message-size=$MAX_MESSAGE_SIZE"
 
     echo "APP_OPTS=$APP_OPTS"
 

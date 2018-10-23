@@ -12,6 +12,7 @@ case class ApplicationConfig(
   grpcPort: Int,
   httpPort: Int,
   shadowingOn: Boolean,
+  maxMessageSize: Int = 4 * 1024 * 1024,
   profilingDestination: String,
   monitoringDestination: String,
 )
