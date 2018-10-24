@@ -180,7 +180,7 @@ class ApplicationExecutionServiceImpl(
             Result.ok(response)
           },
           thr => {
-            logger.error("Can't send message to debug", thr)
+            logger.error("Request to model failed", thr)
             sendToDebug(ResponseOrError.Error(ExecutionError(thr.toString)), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
             thr
           }
