@@ -1,5 +1,6 @@
 package io.hydrosphere.serving.gateway.service
 
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.data.EitherT

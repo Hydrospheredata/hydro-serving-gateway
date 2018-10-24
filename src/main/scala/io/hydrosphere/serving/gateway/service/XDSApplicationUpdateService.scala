@@ -55,12 +55,12 @@ class XDSActor(
     }
 
     override def onCompleted(): Unit = {
-      log.info("Application stream closed")
+      log.debug("Application stream closed")
       context become connecting
     }
 
     override def onNext(value: DiscoveryResponse): Unit = {
-      log.info(s"Discovery stream update: $value")
+      log.debug(s"Discovery stream update: $value")
 
       lastResponse = Instant.now()
 
@@ -71,7 +71,7 @@ class XDSActor(
         log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
         applicationStorage.update(applications, value.versionInfo)
       } else {
-        log.info(s"Got $value message")
+        log.debug(s"Got $value message")
       }
     }
   }
@@ -80,7 +80,7 @@ class XDSActor(
 
   def connecting: Receive = {
     case Tick =>
-      log.info(s"Connecting to stream")
+      log.debug(s"Connecting to stream")
       try {
         val builder = ManagedChannelBuilder
           .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
@@ -115,7 +115,7 @@ class XDSActor(
   def update(response: StreamObserver[DiscoveryRequest]) = {
     val prevVersion = applicationStorage.version
 
-    log.info(s"Requesting state update. Current version: $prevVersion")
+    log.debug(s"Requesting state update. Current version: $prevVersion")
 
     val request = DiscoveryRequest(
       versionInfo = prevVersion,

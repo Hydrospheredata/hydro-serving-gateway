@@ -1,19 +1,17 @@
 package io.hydrosphere.serving.gateway.config
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpMethods._
 import akka.http.scaladsl.model.headers.HttpOriginRange
 import akka.stream.ActorMaterializer
 import ch.megard.akka.http.cors.scaladsl.model.HttpHeaderRange
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
 import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
-import io.hydrosphere.serving.gateway.grpc.GrpcApi
-import io.hydrosphere.serving.gateway.http.HttpApi
 import io.hydrosphere.serving.gateway.service.{ApplicationExecutionServiceImpl, ApplicationStorageImpl, XDSApplicationUpdateService}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringService
 import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import org.apache.logging.log4j.scala.Logging
@@ -49,9 +47,11 @@ object Inject extends Logging {
   val sidecarChannel: Channel = ClientInterceptors
     .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
-  val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
-  val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
-  val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
+  val deadlineUnit = appConfig.application.grpc.deadline.unit
+  val deadlineLength = appConfig.application.grpc.deadline.length
+  val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
+  val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
+  val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
 
   logger.debug(s"Initializing application storage")
   implicit val applicationStorage = new ApplicationStorageImpl()

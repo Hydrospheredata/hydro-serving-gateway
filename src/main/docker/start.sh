@@ -11,7 +11,9 @@
 
 [ -z "$APP_SHADOWING_ON" ] && APP_SHADOWING_ON="false"
 
+[ -z "$MAX_CONTENT_LENGTH" ] && MAX_CONTENT_LENGTH="536870912"
 [ -z "$MAX_MESSAGE_SIZE" ] && MAX_MESSAGE_SIZE="536870912"
+[ -z "$GRPC_DEADLINE" ] && GRPC_DEADLINE="15seconds"
 
 JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMX"
 
@@ -22,9 +24,10 @@ if [ "$CUSTOM_CONFIG" = "" ]
 then
     echo "Custom config does not exist"
     APP_OPTS="$APP_OPTS -Dsidecar.port=$SIDECAR_INGRESS_PORT -Dsidecar.host=$SIDECAR_HOST"
-    APP_OPTS="$APP_OPTS -Dapplication.http-port=$GATEWAY_HTTP_PORT -Dapplication.grpc-port=$GATEWAY_GRPC_PORT"
+    APP_OPTS="$APP_OPTS -Dapplication.http.port=$GATEWAY_HTTP_PORT"
     APP_OPTS="$APP_OPTS -Dapplication.shadowing-on=$APP_SHADOWING_ON"
-    APP_OPTS="$APP_OPTS -Dapplication.max-message-size=$MAX_MESSAGE_SIZE"
+    APP_OPTS="$APP_OPTS -Dakka.http.server.parsing.max-content-length=$MAX_CONTENT_LENGTH -Dakka.http.client.parsing.max-content-length=$MAX_CONTENT_LENGTH"
+    APP_OPTS="$APP_OPTS -Dapplication.grpc.deadline=$GRPC_DEADLINE -Dapplication.grpc.port=$GATEWAY_GRPC_PORT -Dapplication.grpc.max-message-size=$MAX_MESSAGE_SIZE"
 
     echo "APP_OPTS=$APP_OPTS"
 

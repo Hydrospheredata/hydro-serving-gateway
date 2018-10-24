@@ -15,13 +15,13 @@ class GrpcApi(
 )(implicit ec: ExecutionContext) extends Logging {
 
   private[this] val builder = BuilderWrapper(NettyServerBuilder
-    .forPort(appConfig.grpcPort)
-    .maxMessageSize(appConfig.maxMessageSize))
+    .forPort(appConfig.grpc.port)
+    .maxMessageSize(appConfig.grpc.maxMessageSize))
 
   val predictionService = new GrpcPredictionService(gatewayPredictionService)
 
   val server = builder.addService(PredictionServiceGrpc.bindService(predictionService, ec)).build
 
-  logger.info(s"Starting GRPC API server @ 0.0.0.0:${appConfig.grpcPort}")
+  logger.info(s"Starting GRPC API server @ 0.0.0.0:${appConfig.grpc.port}")
   server.start()
 }
