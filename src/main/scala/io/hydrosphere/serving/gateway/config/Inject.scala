@@ -8,7 +8,7 @@ import akka.http.scaladsl.model.headers.HttpOriginRange
 import akka.stream.ActorMaterializer
 import ch.megard.akka.http.cors.scaladsl.model.HttpHeaderRange
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
+import io.grpc.{Channel, ClientInterceptors, Deadline, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.service.{ApplicationExecutionServiceImpl, ApplicationStorageImpl, XDSApplicationUpdateService}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
@@ -47,11 +47,9 @@ object Inject extends Logging {
   val sidecarChannel: Channel = ClientInterceptors
     .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
-  val deadlineUnit = appConfig.application.grpc.deadline.unit
-  val deadlineLength = appConfig.application.grpc.deadline.length
-  val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
-  val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
-  val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel).withDeadlineAfter(deadlineLength, deadlineUnit)
+  val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
+  val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
+  val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
 
   logger.debug(s"Initializing application storage")
   implicit val applicationStorage = new ApplicationStorageImpl()

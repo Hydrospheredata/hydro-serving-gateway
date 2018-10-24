@@ -139,10 +139,13 @@ class ApplicationExecutionServiceImpl(
       val modelVersionIdHeaderValue = new AtomicReference[String](null)
       val latencyHeaderValue = new AtomicReference[String](null)
 
+      val deadline = applicationConfig.grpc.deadline
+
       var requestBuilder = predictGrpcClient
         .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, unit.serviceName)
         .withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionIdHeaderValue)
         .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, latencyHeaderValue)
+        .withDeadlineAfter(deadline.length, deadline.unit)
 
       if (tracingInfo.isDefined) {
         val tr = tracingInfo.get
@@ -300,10 +303,12 @@ class ApplicationExecutionServiceImpl(
         request = Option(predictRequest),
         responseOrError = responseOrError
       )
+      val deadline = applicationConfig.grpc.deadline
 
       //TODO do we really need this?
       monitoringGrpcClient
         .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.monitoringDestination)
+        .withDeadlineAfter(deadline.length, deadline.unit)
         .analyze(execInfo)
         .onComplete {
           case Failure(thr) =>
@@ -314,6 +319,7 @@ class ApplicationExecutionServiceImpl(
 
       profilerGrpcClient
         .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.profilingDestination)
+        .withDeadlineAfter(deadline.length, deadline.unit)
         .analyze(execInfo)
         .onComplete {
           case Failure(thr) =>
