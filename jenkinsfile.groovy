@@ -25,5 +25,10 @@ pipelineCommon(
         collectTestResults,
         buildFunction,
         buildFunction,
-        buildFunction
+        buildFunction,
+        null,
+        "",
+        "",
+        {},
+        commitToCD("gateway", "dev")
 )
