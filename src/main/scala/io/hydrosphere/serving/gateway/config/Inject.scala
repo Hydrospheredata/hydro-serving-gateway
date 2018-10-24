@@ -1,19 +1,17 @@
 package io.hydrosphere.serving.gateway.config
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.HttpMethods._
 import akka.http.scaladsl.model.headers.HttpOriginRange
 import akka.stream.ActorMaterializer
 import ch.megard.akka.http.cors.scaladsl.model.HttpHeaderRange
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
-import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
-import io.hydrosphere.serving.gateway.grpc.GrpcApi
-import io.hydrosphere.serving.gateway.http.HttpApi
+import io.grpc.{Channel, ClientInterceptors, Deadline, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.service.{ApplicationExecutionServiceImpl, ApplicationStorageImpl, XDSApplicationUpdateService}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringService
 import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import org.apache.logging.log4j.scala.Logging

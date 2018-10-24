@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import io.grpc.ServerBuilder
+import io.grpc.netty.NettyServerBuilder
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.service.ApplicationExecutionService
 import io.hydrosphere.serving.gateway.util.GrpcUtil.BuilderWrapper
@@ -14,12 +14,14 @@ class GrpcApi(
   gatewayPredictionService: ApplicationExecutionService
 )(implicit ec: ExecutionContext) extends Logging {
 
-  private[this] val builder = BuilderWrapper(ServerBuilder.forPort(appConfig.grpcPort))
+  private[this] val builder = BuilderWrapper(NettyServerBuilder
+    .forPort(appConfig.grpc.port)
+    .maxMessageSize(appConfig.grpc.maxMessageSize))
 
   val predictionService = new GrpcPredictionService(gatewayPredictionService)
 
   val server = builder.addService(PredictionServiceGrpc.bindService(predictionService, ec)).build
 
-  logger.info(s"Starting GRPC API server @ 0.0.0.0:${appConfig.grpcPort}")
+  logger.info(s"Starting GRPC API server @ 0.0.0.0:${appConfig.grpc.port}")
   server.start()
 }

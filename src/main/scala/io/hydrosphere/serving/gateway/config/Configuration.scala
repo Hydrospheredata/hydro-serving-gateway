@@ -2,15 +2,27 @@ package io.hydrosphere.serving.gateway.config
 
 import org.apache.logging.log4j.scala.Logging
 
-case class SidecarConfig(
+import scala.concurrent.duration.Duration
+
+final case class SidecarConfig(
   host: String,
   port: Int,
   xdsSilentRestartSeconds: Long
 )
 
-case class ApplicationConfig(
-  grpcPort: Int,
-  httpPort: Int,
+final case class GrpcConfig(
+  port: Int,
+  deadline: Duration,
+  maxMessageSize: Int = 4 * 1024 * 1024,
+)
+
+final case class HttpConfig(
+  port: Int
+)
+
+final case class ApplicationConfig(
+  grpc: GrpcConfig,
+  http: HttpConfig,
   shadowingOn: Boolean,
   profilingDestination: String,
   monitoringDestination: String,
@@ -20,6 +32,7 @@ final case class Configuration(
   application: ApplicationConfig,
   sidecar: SidecarConfig,
 )
+
 
 object Configuration extends Logging {
   def loadOrFail() = {

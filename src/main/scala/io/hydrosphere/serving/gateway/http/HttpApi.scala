@@ -51,6 +51,6 @@ class HttpApi(
     }
   }
 
-  logger.info(s"Starting HTTP API server @ 0.0.0.0:${configuration.httpPort}")
-  val serverBinding = Http().bindAndHandle(routes, "0.0.0.0", configuration.httpPort)
+  logger.info(s"Starting HTTP API server @ 0.0.0.0:${configuration.http.port}")
+  val serverBinding = Http().bindAndHandle(routes, "0.0.0.0", configuration.http.port)
 }
