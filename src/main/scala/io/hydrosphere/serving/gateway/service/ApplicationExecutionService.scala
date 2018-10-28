@@ -26,6 +26,7 @@ import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 import scala.util.{Failure, Try}
 
 trait ApplicationExecutionService {
@@ -170,16 +171,20 @@ class ApplicationExecutionServiceImpl(
         .predict(verifiedRequest)
         .transform(
           response => {
-            val latency = getLatency(latencyHeaderValue)
-            val res = if (latency.isSuccess) {
-              response.addInternalInfo(
-                "system.latency" -> latency.get
-              )
-            } else {
-              response
-            }
+            try {
+              val latency = getLatency(latencyHeaderValue)
+              val res = if (latency.isSuccess) {
+                response.addInternalInfo(
+                  "system.latency" -> latency.get
+                )
+              } else {
+                response
+              }
 
-            sendToDebug(ResponseOrError.Response(res), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
+              sendToDebug(ResponseOrError.Response(res), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
+            } catch {
+              case NonFatal(e) => logger.error("Error while transforming the response", e)
+            }
             Result.ok(response)
           },
           thr => {
