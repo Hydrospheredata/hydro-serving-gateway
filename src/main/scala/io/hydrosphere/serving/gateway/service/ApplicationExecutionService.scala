@@ -127,9 +127,15 @@ class ApplicationExecutionServiceImpl(
     f.value
   }
 
-  def serve(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+  def verify(request: PredictRequest): Either[Map[String, Result.HError], PredictRequest] = {
     val verificationResults = request.inputs.map {
-      case (name, tensor) => name -> TensorUtil.verifyShape(tensor)
+      case (name, tensor) =>
+        val verifiedTensor = if (!tensor.tensorContent.isEmpty) { // tensorContent - byte field, thus skip verifications
+          Right(tensor)
+        } else {
+          TensorUtil.verifyShape(tensor)
+        }
+        name -> verifiedTensor
     }
 
     val errors = verificationResults.filter {
@@ -137,71 +143,77 @@ class ApplicationExecutionServiceImpl(
     }.mapValues(_.left.get)
 
     if (errors.isEmpty) {
-      val modelVersionIdHeaderValue = new AtomicReference[String](null)
-      val latencyHeaderValue = new AtomicReference[String](null)
-
-      val deadline = applicationConfig.grpc.deadline
-
-      var requestBuilder = predictGrpcClient
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, unit.serviceName)
-        .withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionIdHeaderValue)
-        .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, latencyHeaderValue)
-        .withDeadlineAfter(deadline.length, deadline.unit)
-
-      if (tracingInfo.isDefined) {
-        val tr = tracingInfo.get
-        requestBuilder = requestBuilder
-          .withOption(Headers.XRequestId.callOptionsKey, tr.xRequestId)
-
-        if (tr.xB3requestId.isDefined) {
-          requestBuilder = requestBuilder
-            .withOption(Headers.XB3TraceId.callOptionsKey, tr.xB3requestId.get)
-        }
-
-        if (tr.xB3SpanId.isDefined) {
-          requestBuilder = requestBuilder
-            .withOption(Headers.XB3ParentSpanId.callOptionsKey, tr.xB3SpanId.get)
-        }
-      }
-
       val verifiedInputs = verificationResults.mapValues(_.right.get)
-      val verifiedRequest = request.copy(inputs = verifiedInputs)
-
-      requestBuilder
-        .predict(verifiedRequest)
-        .transform(
-          response => {
-            try {
-              val latency = getLatency(latencyHeaderValue)
-              val res = if (latency.isSuccess) {
-                response.addInternalInfo(
-                  "system.latency" -> latency.get
-                )
-              } else {
-                response
-              }
-
-              sendToDebug(ResponseOrError.Response(res), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
-            } catch {
-              case NonFatal(e) => logger.error("Error while transforming the response", e)
-            }
-            Result.ok(response)
-          },
-          thr => {
-            logger.error("Request to model failed", thr)
-            sendToDebug(ResponseOrError.Error(ExecutionError(thr.toString)), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
-            thr
-          }
-        )
+      Right(request.copy(inputs = verifiedInputs))
     } else {
-      Future.successful(
-        Result.errors(
-          errors.map {
-            case (name, err) =>
-              ClientError(s"Shape verification error for input $name: $err")
-          }.toSeq
+      Left(errors)
+    }
+  }
+
+  def serve(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+    verify(request) match {
+      case Left(tensorErrors) =>
+        Future.successful(
+          Result.errors(
+            tensorErrors.map {
+              case (name, err) =>
+                ClientError(s"Shape verification error for input $name: $err")
+            }.toSeq
+          )
         )
-      )
+      case Right(verifiedRequest) =>
+        val modelVersionIdHeaderValue = new AtomicReference[String](null)
+        val latencyHeaderValue = new AtomicReference[String](null)
+
+        val deadline = applicationConfig.grpc.deadline
+
+        var requestBuilder = predictGrpcClient
+          .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, unit.serviceName)
+          .withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionIdHeaderValue)
+          .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, latencyHeaderValue)
+          .withDeadlineAfter(deadline.length, deadline.unit)
+
+        if (tracingInfo.isDefined) {
+          val tr = tracingInfo.get
+          requestBuilder = requestBuilder
+            .withOption(Headers.XRequestId.callOptionsKey, tr.xRequestId)
+
+          if (tr.xB3requestId.isDefined) {
+            requestBuilder = requestBuilder
+              .withOption(Headers.XB3TraceId.callOptionsKey, tr.xB3requestId.get)
+          }
+
+          if (tr.xB3SpanId.isDefined) {
+            requestBuilder = requestBuilder
+              .withOption(Headers.XB3ParentSpanId.callOptionsKey, tr.xB3SpanId.get)
+          }
+        }
+        requestBuilder
+          .predict(verifiedRequest)
+          .transform(
+            response => {
+              try {
+                val latency = getLatency(latencyHeaderValue)
+                val res = if (latency.isSuccess) {
+                  response.addInternalInfo(
+                    "system.latency" -> latency.get
+                  )
+                } else {
+                  response
+                }
+
+                sendToDebug(ResponseOrError.Response(res), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
+              } catch {
+                case NonFatal(e) => logger.error("Error while transforming the response", e)
+              }
+              Result.ok(response)
+            },
+            thr => {
+              logger.error("Request to model failed", thr)
+              sendToDebug(ResponseOrError.Error(ExecutionError(thr.toString)), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
+              thr
+            }
+          )
     }
   }
 
