@@ -30,5 +30,5 @@ pipelineCommon(
         "",
         "",
         {},
-        commitToCD("gateway", "dev")
+        commitToCD("gateway")
 )
