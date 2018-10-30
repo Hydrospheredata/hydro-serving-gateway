@@ -54,6 +54,7 @@ object Dependencies {
     grpcDependencies ++
     Seq(
       "org.typelevel" %% "cats-core" % catsV,
+      "org.typelevel" %% "cats-effect" % "1.0.0",
       "com.github.pureconfig" %% "pureconfig" % "0.9.1"
     )
 }

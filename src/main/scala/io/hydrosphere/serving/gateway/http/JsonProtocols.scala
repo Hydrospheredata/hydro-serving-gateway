@@ -1,7 +1,7 @@
 package io.hydrosphere.serving.gateway.http
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import io.hydrosphere.serving.gateway.service.{GWApplication, GWExecutionGraph, GWService, GWStage}
+import io.hydrosphere.serving.gateway.persistence.application.{StoredApplication, StoredExecutionGraph, StoredService, StoredStage}
 import io.hydrosphere.serving.model.api.Result.{ClientError, ErrorCollection, HError, InternalError}
 import spray.json._
 
@@ -44,20 +44,20 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
     override def read(json: JsValue): HError = ???
   }
 
-  implicit val gwService = jsonFormat3(GWService.apply)
-  implicit val gwStageFormat = new RootJsonFormat[GWStage] {
-    override def write(obj: GWStage): JsValue = {
+  implicit val gwService = jsonFormat3(StoredService.apply)
+  implicit val gwStageFormat = new RootJsonFormat[StoredStage] {
+    override def write(obj: StoredStage): JsValue = {
       JsObject(
         "id" -> JsString(obj.id),
         "services" -> obj.services.toJson
       )
     }
 
-    override def read(json: JsValue): GWStage = throw new DeserializationException("GWStage reader is not implemented")
+    override def read(json: JsValue): StoredStage = throw DeserializationException("GWStage reader is not implemented")
   }
-  implicit val gwExecGraphFormat = jsonFormat1(GWExecutionGraph.apply)
-  implicit val gwAppFormat = new RootJsonFormat[GWApplication] {
-    override def write(obj: GWApplication): JsValue = {
+  implicit val gwExecGraphFormat = jsonFormat1(StoredExecutionGraph.apply)
+  implicit val gwAppFormat = new RootJsonFormat[StoredApplication] {
+    override def write(obj: StoredApplication): JsValue = {
       JsObject(
         "id" -> JsNumber(obj.id),
         "name" -> JsString(obj.name),
@@ -65,7 +65,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
       )
     }
 
-    override def read(json: JsValue): GWApplication = throw new DeserializationException("GWApplication reader is not implemented")
+    override def read(json: JsValue): StoredApplication = throw DeserializationException("GWApplication reader is not implemented")
   }
 }
 

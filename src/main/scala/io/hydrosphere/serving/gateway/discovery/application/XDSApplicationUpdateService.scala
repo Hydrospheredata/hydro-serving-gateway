@@ -1,29 +1,26 @@
-package io.hydrosphere.serving.gateway.service
+package io.hydrosphere.serving.gateway.discovery.application
 
 import java.time.Instant
-import java.util.concurrent.TimeUnit
-
-import akka.actor.{Actor, ActorLogging, ActorSystem, Cancellable, Props}
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import cats.Applicative
+import cats.syntax.functor._
 import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
-import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
-import io.grpc.internal.GrpcUtil
-import io.grpc.netty.NettyChannelBuilder
-import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.gateway.config.Inject.appConfig
+import io.grpc.{ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.config.SidecarConfig
-import io.hydrosphere.serving.gateway.service.XDSActor.{GetUpdates, Tick}
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.gateway.discovery.application.XDSActor.{GetUpdates, Tick}
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
 import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration._
 import scala.util.Try
 
-class XDSApplicationUpdateService(
-  applicationStorage: ApplicationStorage,
+class XDSApplicationUpdateService[F[_]: Applicative](
+  applicationStorage: ApplicationStorage[F],
   sidecarConfig: SidecarConfig
 )(implicit actorSystem: ActorSystem) extends Logging {
 
@@ -36,9 +33,9 @@ class XDSApplicationUpdateService(
   }
 }
 
-class XDSActor(
+class XDSActor[F[_]: Applicative](
   sidecarConfig: SidecarConfig,
-  applicationStorage: ApplicationStorage
+  applicationStorage: ApplicationStorage[F]
 ) extends Actor with ActorLogging {
 
   import context._
@@ -83,7 +80,7 @@ class XDSActor(
       log.debug(s"Connecting to stream")
       try {
         val builder = ManagedChannelBuilder
-          .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
+          .forAddress(sidecarConfig.host, sidecarConfig.port)
         builder.enableRetry()
         builder.usePlaintext()
 
@@ -113,16 +110,18 @@ class XDSActor(
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {
-    val prevVersion = applicationStorage.version
-
-    log.debug(s"Requesting state update. Current version: $prevVersion")
-
-    val request = DiscoveryRequest(
-      versionInfo = prevVersion,
-      node = Some(Node()),
-      typeUrl = typeUrl
-    )
-    response.onNext(request)
+    for {
+      version <- applicationStorage.version
+    } yield {
+      log.debug(s"Requesting state update. Current version: $version")
+      val request = DiscoveryRequest(
+        versionInfo = version,
+        node = Some(Node()),
+        typeUrl = typeUrl
+      )
+      response.onNext(request)
+      request
+    }
   }
 
   override def preStart() = {
@@ -155,8 +154,8 @@ object XDSActor {
 
   case object GetUpdates
 
-  def props(
+  def props[F[_]: Applicative](
     sidecarConfig: SidecarConfig,
-    applicationStorage: ApplicationStorage
-  ) = Props(classOf[XDSActor], sidecarConfig, applicationStorage)
+    applicationStorage: ApplicationStorage[F]
+  ) = Props(new XDSActor[F](sidecarConfig, applicationStorage))
 }

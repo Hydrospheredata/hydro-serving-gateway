@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.service
+package io.hydrosphere.serving.gateway.service.application
 
 import spray.json.JsObject
 

@@ -1,13 +1,16 @@
 package io.hydrosphere.serving.gateway.http
 
 import akka.http.scaladsl.server.Directives._
-import io.hydrosphere.serving.gateway.service.{ApplicationExecutionService, JsonServeByIdRequest, JsonServeByNameRequest, RequestTracingInfo}
+import cats.effect.Effect
+import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, JsonServeByIdRequest, JsonServeByNameRequest, RequestTracingInfo}
 import io.hydrosphere.serving.http.TracingHeaders
 import org.apache.logging.log4j.scala.Logging
 import spray.json.JsObject
 
+import scala.concurrent.Future
+
 class JsonPredictionController(
-  gatewayPredictionService: ApplicationExecutionService
+  applicationExecutionService: ApplicationExecutionService[Future]
 ) extends JsonProtocols with Logging {
 
   def optionalTracingHeaders = optionalHeaderValueByName(TracingHeaders.xRequestId) &
@@ -20,7 +23,7 @@ class JsonPredictionController(
         entity(as[JsObject]) { bytes =>
           complete {
             logger.info(s"Serve request: id=$appId signature=$signatureName")
-            gatewayPredictionService.serveJsonById(
+            applicationExecutionService.serveJsonById(
               JsonServeByIdRequest(
                 targetId = appId,
                 signatureName = signatureName,
@@ -43,7 +46,7 @@ class JsonPredictionController(
   def listApps = pathPrefix("applications") {
     pathEndOrSingleSlash {
       get {
-        complete(gatewayPredictionService.listApps)
+        complete(applicationExecutionService.listApps)
       }
     }
   }
@@ -54,7 +57,7 @@ class JsonPredictionController(
         entity(as[JsObject]) { jsObject =>
           complete {
             logger.info(s"Serve request: name=$appName signature=$signatureName")
-            gatewayPredictionService.serveJsonByName(
+            applicationExecutionService.serveJsonByName(
               JsonServeByNameRequest(
                 appName = appName,
                 signatureName = signatureName,

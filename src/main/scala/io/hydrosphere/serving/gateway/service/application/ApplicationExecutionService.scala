@@ -1,20 +1,22 @@
-package io.hydrosphere.serving.gateway.service
+package io.hydrosphere.serving.gateway.service.application
 
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.data.EitherT
+import cats.effect.IO
 import cats.implicits._
+import cats.{ApplicativeError, MonadError}
+import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Header, Headers}
-import io.hydrosphere.serving.model.api.{HFResult, Result, TensorUtil}
-import io.hydrosphere.serving.model.api.Result.Implicits._
-import io.hydrosphere.serving.model.api.Result.ClientError
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.model.api.Result.{ClientError, ErrorCollection}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
+import io.hydrosphere.serving.model.api.{HFResult, Result, TensorUtil}
 import io.hydrosphere.serving.monitoring.data_profile_types.DataProfileType
-import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc}
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
+import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc}
 import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
@@ -25,18 +27,18 @@ import io.hydrosphere.serving.tensorflow.types.DataType
 import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 
-trait ApplicationExecutionService {
-  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsValue]
+trait ApplicationExecutionService[F[_]] {
+  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
 
-  def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsValue]
+  def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
 
-  def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse]
+  def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse]
 
-  def listApps: List[GWApplication]
+  def listApps: F[Seq[StoredApplication]]
 }
 
 private case class ExecutionUnit(
@@ -55,76 +57,88 @@ private case class StageInfo(
   dataProfileFields: Map[String, DataProfileType] = Map.empty
 )
 
+object Kek {
+  type AP[T[_]] = MonadError[T, Throwable]
+}
 
-class ApplicationExecutionServiceImpl(
+class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
   applicationConfig: ApplicationConfig,
-  applicationStorage: ApplicationStorageImpl,
+  applicationStorage: ApplicationStorage[F],
   predictGrpcClient: PredictionServiceGrpc.PredictionServiceStub,
   profilerGrpcClient: DataProfilerServiceGrpc.DataProfilerServiceStub,
   monitoringGrpcClient: MonitoringServiceGrpc.MonitoringServiceStub
-)(implicit val ex: ExecutionContext) extends ApplicationExecutionService with Logging {
+)(implicit val ex: ExecutionContext) extends ApplicationExecutionService[F] with Logging {
 
-  def listApps: List[GWApplication] = {
+  private[this] val ME = MonadError[F, Throwable]
+
+  def listApps: F[Seq[StoredApplication]] = {
     applicationStorage.listAll
   }
 
-  override def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+  def getApp(name: String): F[StoredApplication] = {
+    for {
+      maybeApp <- applicationStorage.get(name)
+      app <- ME.fromOption(maybeApp, new RuntimeException(s"Can't find an app with name $name"))
+    } yield app
+  }
+
+  def getApp(id: Long): F[StoredApplication] = {
+    for {
+      maybeApp <- applicationStorage.get(id)
+      app <- ME.fromOption(maybeApp, new RuntimeException(s"Can't find an app with id $id"))
+    } yield app
+  }
+
+  override def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
     data.modelSpec match {
       case Some(modelSpec) =>
-        applicationStorage.get(modelSpec.name) match {
-          case Right(app) =>
-            serveApplication(app, data, tracingInfo)
-          case Left(error) =>
-            Result.errorF(error)
-        }
-      case None => Future.failed(new IllegalArgumentException("ModelSpec is not defined"))
+        for {
+          app <- getApp(modelSpec.name)
+          result <- serveApplication(app, data, tracingInfo)
+        } yield result
+      case None => ApplicativeError[F, Throwable].raiseError(new IllegalArgumentException("ModelSpec is not defined"))
     }
   }
 
-  override def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsObject] = {
-    applicationStorage.get(jsonServeRequest.targetId) match {
-      case Right(application) =>
-        val signature = application.contract.signatures
-          .find(_.signatureName == jsonServeRequest.signatureName)
-          .toHResult(
-            ClientError(s"Application ${jsonServeRequest.targetId} doesn't have a ${jsonServeRequest.signatureName} signature")
-          )
-
-        val ds = signature.right.map { sig =>
-          new SignatureBuilder(sig).convert(jsonServeRequest.inputs).right.map { tensors =>
-            PredictRequest(
-              modelSpec = Some(
-                ModelSpec(
-                  name = application.name,
-                  signatureName = jsonServeRequest.signatureName,
-                  version = None
-                )
-              ),
-              inputs = tensors.mapValues(_.toProto)
+  def jsonToRequest(appName: String, inputs: JsObject, signanture: ModelSignature): Try[PredictRequest] = {
+    val convertResult = new SignatureBuilder(signanture).convert(inputs)
+    convertResult match {
+      case Left(value) =>
+        Failure(new IllegalArgumentException(value.message))
+      case Right(tensors) =>
+        Success(PredictRequest(
+          modelSpec = Some(
+            ModelSpec(
+              name = appName,
+              signatureName = signanture.signatureName,
+              version = None
             )
-          }
-        }
-
-        ds match {
-          case Left(err) => Result.errorF(err)
-          case Right(Left(tensorError)) => Result.clientErrorF(s"Tensor validation error: $tensorError")
-          case Right(Right(request)) =>
-            serveApplication(application, request, tracingInfo).map { result =>
-              result.right.map(responseToJsObject)
-            }
-        }
-      case Left(error) =>
-        Result.errorF(error)
+          ),
+          inputs = tensors.mapValues(_.toProto)
+        ))
     }
   }
 
-  override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[JsValue] = {
-    val f = for {
-      app <- EitherT(Future.apply(applicationStorage.get(jsonServeByNameRequest.appName)))
-      serveByIdRequest = jsonServeByNameRequest.toIdRequest(app.id)
-      result <- EitherT(serveJsonById(serveByIdRequest, tracingInfo))
-    } yield result
-    f.value
+  override def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
+    for {
+      app <- getApp(jsonServeRequest.targetId)
+      maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeRequest.signatureName)
+      signature <- ME.fromOption(maybeSignature, new RuntimeException(s"Can't find a signature ${jsonServeRequest.signatureName}"))
+      maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
+      request <- ME.fromTry(maybeRequest)
+      result <- serveApplication(app, request, tracingInfo)
+    } yield responseToJsObject(result)
+  }
+
+  override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
+    for {
+      app <- getApp(jsonServeByNameRequest.appName)
+      maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeByNameRequest.signatureName)
+      signature <- ME.fromOption(maybeSignature, new RuntimeException(s"Can't find a signature ${jsonServeByNameRequest.signatureName}"))
+      maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
+      request <- ME.fromTry(maybeRequest)
+      result <- serveApplication(app, request, tracingInfo)
+    } yield responseToJsObject(result)
   }
 
   def verify(request: PredictRequest): Either[Map[String, Result.HError], PredictRequest] = {
@@ -150,17 +164,17 @@ class ApplicationExecutionServiceImpl(
     }
   }
 
-  def serve(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+  def serve(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): IO[PredictResponse] = {
     verify(request) match {
       case Left(tensorErrors) =>
-        Future.successful(
-          Result.errors(
+        IO.raiseError(new IllegalArgumentException(
+          ErrorCollection(
             tensorErrors.map {
               case (name, err) =>
                 ClientError(s"Shape verification error for input $name: $err")
             }.toSeq
-          )
-        )
+          ).toString
+        ))
       case Right(verifiedRequest) =>
         val modelVersionIdHeaderValue = new AtomicReference[String](null)
         val latencyHeaderValue = new AtomicReference[String](null)
@@ -188,7 +202,8 @@ class ApplicationExecutionServiceImpl(
               .withOption(Headers.XB3ParentSpanId.callOptionsKey, tr.xB3SpanId.get)
           }
         }
-        requestBuilder
+
+        def fResult = requestBuilder
           .predict(verifiedRequest)
           .transform(
             response => {
@@ -206,7 +221,7 @@ class ApplicationExecutionServiceImpl(
               } catch {
                 case NonFatal(e) => logger.error("Error while transforming the response", e)
               }
-              Result.ok(response)
+              response
             },
             thr => {
               logger.error("Request to model failed", thr)
@@ -214,29 +229,31 @@ class ApplicationExecutionServiceImpl(
               thr
             }
           )
+
+        IO.fromFuture(IO(fResult))
     }
   }
 
-  def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+  def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
     //TODO Add request id for step
-    val empty = Result.okF(PredictResponse(outputs = data.inputs))
+    val empty = IO.pure(PredictResponse(outputs = data.inputs))
     units.foldLeft(empty) {
       case (a, b) =>
-        EitherT(a).flatMap { resp =>
+        a.flatMap { res =>
           val request = PredictRequest(
             modelSpec = Some(
               ModelSpec(
                 signatureName = b.servicePath
               )
             ),
-            inputs = resp.outputs
+            inputs = res.outputs
           )
-          EitherT(serve(b, request, tracingInfo))
-        }.value
+          serve(b, request, tracingInfo)
+        }
     }
   }
 
-  def serveApplication(application: GWApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): HFResult[PredictResponse] = {
+  def serveApplication(application: StoredApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): IO[PredictResponse] = {
     application.executionGraph.stages match {
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
