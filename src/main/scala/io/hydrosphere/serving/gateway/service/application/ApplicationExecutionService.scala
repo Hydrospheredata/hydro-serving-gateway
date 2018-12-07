@@ -89,21 +89,26 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   }
 
   def jsonToRequest(appName: String, inputs: JsObject, signanture: ModelSignature): Try[PredictRequest] = {
-    val convertResult = new SignatureBuilder(signanture).convert(inputs)
-    convertResult match {
-      case Left(value) =>
-        Failure(new IllegalArgumentException(value.message))
-      case Right(tensors) =>
-        Success(PredictRequest(
-          modelSpec = Some(
-            ModelSpec(
-              name = appName,
-              signatureName = signanture.signatureName,
-              version = None
-            )
-          ),
-          inputs = tensors.mapValues(_.toProto)
-        ))
+
+    try {
+      val c = new SignatureBuilder(signanture).convert(inputs)
+      c match {
+        case Left(value) =>
+          Failure(InvalidArgument(value.message))
+        case Right(tensors) =>
+          Success(PredictRequest(
+            modelSpec = Some(
+              ModelSpec(
+                name = appName,
+                signatureName = signanture.signatureName,
+                version = None
+              )
+            ),
+            inputs = tensors.mapValues(_.toProto)
+          ))
+      }
+    } catch {
+      case x: Throwable => Failure(InvalidArgument(x.getMessage))
     }
   }
 
