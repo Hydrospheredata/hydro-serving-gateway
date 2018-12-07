@@ -3,10 +3,9 @@ package io.hydrosphere.serving.gateway.persistence.application
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import cats.Applicative
-import io.hydrosphere.serving.manager.grpc.applications.Application
+import cats.syntax.applicative._
 
 import scala.collection.mutable
-
 
 class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F] {
   private[this] val applicationsById = mutable.Map[Long, StoredApplication]()
@@ -18,17 +17,17 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     val lock = rwLock.readLock()
     try {
       lock.lock()
-      Applicative[F].pure(currentVersion)
+       currentVersion.pure
     } finally {
       lock.unlock()
     }
   }
 
-  def listAll :F[Seq[StoredApplication]] = {
+  def listAll: F[Seq[StoredApplication]] = {
     val lock = rwLock.readLock()
     try {
       lock.lock()
-      Applicative[F].pure(applicationsById.values.toList)
+      applicationsById.values.toSeq.pure
     } finally {
       lock.unlock()
     }
@@ -38,7 +37,7 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     val lock = rwLock.readLock()
     try {
       lock.lock()
-      Applicative[F].pure(applicationsByName.get(name))
+      applicationsByName.get(name).pure
     } finally {
       lock.unlock()
     }
@@ -48,10 +47,23 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     val lock = rwLock.readLock()
     try {
       lock.lock()
-      Applicative[F].pure(applicationsById.get(id))
+      applicationsById.get(id).pure
     } finally {
       lock.unlock()
     }
+  }
+
+  def update(apps: Seq[StoredApplication], version: String): F[String] = {
+    val lock = rwLock.writeLock()
+    try {
+      lock.lock()
+      updateStorageInNames(apps)
+      updateStorageInIds(apps)
+      currentVersion = version
+    } finally {
+      lock.unlock()
+    }
+    version.pure
   }
 
   private def updateStorageInIds(apps: Seq[StoredApplication]): Unit = {
@@ -70,18 +82,4 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     }
   }
 
-  def update(apps: Seq[Application], version: String): F[String] = {
-    val mapped = apps.map(StoredApplication.fromProto)
-
-    val lock = rwLock.writeLock()
-    try {
-      lock.lock()
-      updateStorageInNames(mapped)
-      updateStorageInIds(mapped)
-      currentVersion = version
-    } finally {
-      lock.unlock()
-    }
-    Applicative[F].pure(version)
-  }
 }

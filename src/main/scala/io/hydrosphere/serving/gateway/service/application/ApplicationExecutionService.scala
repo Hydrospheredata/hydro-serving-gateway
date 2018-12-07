@@ -1,34 +1,26 @@
 package io.hydrosphere.serving.gateway.service.application
 
-import java.util.concurrent.atomic.AtomicReference
-
-import cats.data.EitherT
-import cats.effect.IO
+import cats.effect.Sync
 import cats.implicits._
-import cats.{ApplicativeError, MonadError}
+import cats.{Applicative, Traverse}
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
+import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
+import io.hydrosphere.serving.gateway.grpc.PredictionServiceAlg
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
-import io.hydrosphere.serving.model.api.Result.{ClientError, ErrorCollection}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
-import io.hydrosphere.serving.model.api.{HFResult, Result, TensorUtil}
+import io.hydrosphere.serving.model.api.{Result, TensorUtil}
 import io.hydrosphere.serving.monitoring.data_profile_types.DataProfileType
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc}
-import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
+import io.hydrosphere.serving.monitoring.monitoring.{ExecutionError, ExecutionInformation, ExecutionMetadata}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
-import io.hydrosphere.serving.tensorflow.tensor.{TensorProto, TypedTensorFactory}
-import io.hydrosphere.serving.tensorflow.tensor_shape.TensorShapeProto
-import io.hydrosphere.serving.tensorflow.types.DataType
+import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
 import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
 
 import scala.concurrent.ExecutionContext
-import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 trait ApplicationExecutionService[F[_]] {
@@ -41,13 +33,13 @@ trait ApplicationExecutionService[F[_]] {
   def listApps: F[Seq[StoredApplication]]
 }
 
-private case class ExecutionUnit(
+case class ExecutionUnit(
   serviceName: String,
   servicePath: String,
   stageInfo: StageInfo,
 )
 
-private case class StageInfo(
+case class StageInfo(
   applicationRequestId: Option[String],
   signatureName: String,
   applicationId: Long,
@@ -57,19 +49,11 @@ private case class StageInfo(
   dataProfileFields: Map[String, DataProfileType] = Map.empty
 )
 
-object Kek {
-  type AP[T[_]] = MonadError[T, Throwable]
-}
-
-class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
+class ApplicationExecutionServiceImpl[F[_]: Sync](
   applicationConfig: ApplicationConfig,
   applicationStorage: ApplicationStorage[F],
-  predictGrpcClient: PredictionServiceGrpc.PredictionServiceStub,
-  profilerGrpcClient: DataProfilerServiceGrpc.DataProfilerServiceStub,
-  monitoringGrpcClient: MonitoringServiceGrpc.MonitoringServiceStub
+  predictionServiceAlg: PredictionServiceAlg[F],
 )(implicit val ex: ExecutionContext) extends ApplicationExecutionService[F] with Logging {
-
-  private[this] val ME = MonadError[F, Throwable]
 
   def listApps: F[Seq[StoredApplication]] = {
     applicationStorage.listAll
@@ -78,25 +62,29 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
   def getApp(name: String): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.get(name)
-      app <- ME.fromOption(maybeApp, new RuntimeException(s"Can't find an app with name $name"))
+      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with name $name"))
     } yield app
   }
 
   def getApp(id: Long): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.get(id)
-      app <- ME.fromOption(maybeApp, new RuntimeException(s"Can't find an app with id $id"))
+      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with id $id"))
     } yield app
   }
 
-  override def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
+  override def serveGrpcApplication(
+    data: PredictRequest,
+    tracingInfo: Option[RequestTracingInfo]
+  ): F[PredictResponse] = {
     data.modelSpec match {
       case Some(modelSpec) =>
         for {
           app <- getApp(modelSpec.name)
           result <- serveApplication(app, data, tracingInfo)
         } yield result
-      case None => ApplicativeError[F, Throwable].raiseError(new IllegalArgumentException("ModelSpec is not defined"))
+      case None =>
+        Sync[F].raiseError(InvalidArgument("ModelSpec is not defined"))
     }
   }
 
@@ -123,9 +111,9 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
     for {
       app <- getApp(jsonServeRequest.targetId)
       maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeRequest.signatureName)
-      signature <- ME.fromOption(maybeSignature, new RuntimeException(s"Can't find a signature ${jsonServeRequest.signatureName}"))
+      signature <- Sync[F].fromOption(maybeSignature, NotFound(s"Can't find a signature ${jsonServeRequest.signatureName}"))
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
-      request <- ME.fromTry(maybeRequest)
+      request <- Sync[F].fromTry(maybeRequest)
       result <- serveApplication(app, request, tracingInfo)
     } yield responseToJsObject(result)
   }
@@ -134,9 +122,9 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
     for {
       app <- getApp(jsonServeByNameRequest.appName)
       maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeByNameRequest.signatureName)
-      signature <- ME.fromOption(maybeSignature, new RuntimeException(s"Can't find a signature ${jsonServeByNameRequest.signatureName}"))
+      signature <- Sync[F].fromOption(maybeSignature, NotFound(s"Can't find a signature ${jsonServeByNameRequest.signatureName}"))
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
-      request <- ME.fromTry(maybeRequest)
+      request <- Sync[F].fromTry(maybeRequest)
       result <- serveApplication(app, request, tracingInfo)
     } yield responseToJsObject(result)
   }
@@ -164,96 +152,54 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
     }
   }
 
-  def serve(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): IO[PredictResponse] = {
-    verify(request) match {
-      case Left(tensorErrors) =>
-        IO.raiseError(new IllegalArgumentException(
-          ErrorCollection(
-            tensorErrors.map {
-              case (name, err) =>
-                ClientError(s"Shape verification error for input $name: $err")
-            }.toSeq
-          ).toString
-        ))
-      case Right(verifiedRequest) =>
-        val modelVersionIdHeaderValue = new AtomicReference[String](null)
-        val latencyHeaderValue = new AtomicReference[String](null)
-
-        val deadline = applicationConfig.grpc.deadline
-
-        var requestBuilder = predictGrpcClient
-          .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, unit.serviceName)
-          .withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionIdHeaderValue)
-          .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, latencyHeaderValue)
-          .withDeadlineAfter(deadline.length, deadline.unit)
-
-        if (tracingInfo.isDefined) {
-          val tr = tracingInfo.get
-          requestBuilder = requestBuilder
-            .withOption(Headers.XRequestId.callOptionsKey, tr.xRequestId)
-
-          if (tr.xB3requestId.isDefined) {
-            requestBuilder = requestBuilder
-              .withOption(Headers.XB3TraceId.callOptionsKey, tr.xB3requestId.get)
-          }
-
-          if (tr.xB3SpanId.isDefined) {
-            requestBuilder = requestBuilder
-              .withOption(Headers.XB3ParentSpanId.callOptionsKey, tr.xB3SpanId.get)
-          }
-        }
-
-        def fResult = requestBuilder
-          .predict(verifiedRequest)
-          .transform(
-            response => {
-              try {
-                val latency = getLatency(latencyHeaderValue)
-                val res = if (latency.isSuccess) {
-                  response.addInternalInfo(
-                    "system.latency" -> latency.get
-                  )
-                } else {
-                  response
-                }
-
-                sendToDebug(ResponseOrError.Response(res), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
-              } catch {
-                case NonFatal(e) => logger.error("Error while transforming the response", e)
-              }
-              response
-            },
-            thr => {
-              logger.error("Request to model failed", thr)
-              sendToDebug(ResponseOrError.Error(ExecutionError(thr.toString)), verifiedRequest, getCurrentExecutionUnit(unit, modelVersionIdHeaderValue))
-              thr
-            }
-          )
-
-        IO.fromFuture(IO(fResult))
+  def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit) = {
+    if (applicationConfig.shadowingOn) {
+      val execInfo = ExecutionInformation(
+        metadata = Option(ExecutionMetadata(
+          applicationId = executionUnit.stageInfo.applicationId,
+          stageId = executionUnit.stageInfo.stageId,
+          modelVersionId = executionUnit.stageInfo.modelVersionId.getOrElse(-1),
+          signatureName = executionUnit.stageInfo.signatureName,
+          applicationRequestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""),
+          requestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
+          applicationNamespace = executionUnit.stageInfo.applicationNamespace.getOrElse(""),
+          dataTypes = executionUnit.stageInfo.dataProfileFields
+        )),
+        request = Option(predictRequest),
+        responseOrError = responseOrError
+      )
+      for {
+        _ <- predictionServiceAlg.sendToMonitoring(execInfo)
+        _ <- predictionServiceAlg.sendToProfiling(execInfo)
+      } yield ()
+    } else {
+      Applicative[F].pure(())
     }
   }
 
   def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
     //TODO Add request id for step
-    val empty = IO.pure(PredictResponse(outputs = data.inputs))
+    val empty = Applicative[F].pure(PredictResponse(outputs = data.inputs))
     units.foldLeft(empty) {
-      case (a, b) =>
-        a.flatMap { res =>
+      case (previous, current) =>
+        previous.flatMap { res =>
           val request = PredictRequest(
-            modelSpec = Some(
-              ModelSpec(
-                signatureName = b.servicePath
-              )
-            ),
+            modelSpec = ModelSpec(signatureName = current.servicePath).some,
             inputs = res.outputs
           )
-          serve(b, request, tracingInfo)
+          predictionServiceAlg.sendToExecUnit(current, request, tracingInfo).attempt.flatMap {
+            case Right(value) =>
+              sendToDebug(ResponseOrError.Response(value), request, current)
+              Applicative[F].pure(value)
+            case Left(error) =>
+              sendToDebug(ResponseOrError.Error(ExecutionError(error.getMessage)), request, current)
+              Sync[F].raiseError(error)
+          }
         }
     }
   }
 
-  def serveApplication(application: StoredApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): IO[PredictResponse] = {
+  def serveApplication(application: StoredApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
     application.executionGraph.stages match {
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
@@ -275,8 +221,8 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
               servicePath = servicePath.signatureName,
               stageInfo = stageInfo
             )
-            serve(unit, request, tracingInfo)
-          case None => Result.clientErrorF("ModelSpec in request is not specified")
+            servePipeline(Seq(unit), request, tracingInfo)
+          case None => Sync[F].raiseError(InvalidArgument("ModelSpec in request is not specified"))
         }
       case stages => // pipeline
         val execUnits = stages.zipWithIndex.map {
@@ -295,7 +241,7 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
                   applicationNamespace = application.namespace,
                   dataProfileFields = stage.dataProfileFields
                 )
-                Result.ok(
+                Applicative[F].pure(
                   ExecutionUnit(
                     serviceName = stage.id,
                     //servicePath = stage.services.head.signature.get.signatureName, // FIXME dirty hack to fix service signatures
@@ -303,81 +249,20 @@ class ApplicationExecutionServiceImpl[F[_]: Kek.AP](
                     stageInfo = stageInfo
                   )
                 )
-              case None => Result.clientError(s"$stage doesn't have a signature")
+              case None =>
+                Sync[F].raiseError[ExecutionUnit](NotFound(s"$stage doesn't have a signature"))
             }
         }
 
-        Result.sequence(execUnits) match {
-          case Left(err) => Result.errorF(err)
-          case Right(units) =>
-            servePipeline(units, request, tracingInfo)
-        }
+        for {
+          units <- Traverse[List].sequence(execUnits.toList)
+          res <- servePipeline(units, request, tracingInfo)
+        } yield res
     }
   }
-
 
   private def responseToJsObject(rr: PredictResponse): JsObject = {
     val fields = rr.outputs.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v)))
     JsObject(fields)
   }
-
-  private def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit): Unit = {
-    if (applicationConfig.shadowingOn) {
-      val execInfo = ExecutionInformation(
-        metadata = Option(ExecutionMetadata(
-          applicationId = executionUnit.stageInfo.applicationId,
-          stageId = executionUnit.stageInfo.stageId,
-          modelVersionId = executionUnit.stageInfo.modelVersionId.getOrElse(-1),
-          signatureName = executionUnit.stageInfo.signatureName,
-          applicationRequestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""),
-          requestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
-          applicationNamespace = executionUnit.stageInfo.applicationNamespace.getOrElse(""),
-          dataTypes = executionUnit.stageInfo.dataProfileFields
-        )),
-        request = Option(predictRequest),
-        responseOrError = responseOrError
-      )
-      val deadline = applicationConfig.grpc.deadline
-
-      //TODO do we really need this?
-      monitoringGrpcClient
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.monitoringDestination)
-        .withDeadlineAfter(deadline.length, deadline.unit)
-        .analyze(execInfo)
-        .onComplete {
-          case Failure(thr) =>
-            logger.warn("Can't send message to the monitoring service", thr)
-          case _ =>
-            Unit
-        }
-
-      profilerGrpcClient
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, applicationConfig.profilingDestination)
-        .withDeadlineAfter(deadline.length, deadline.unit)
-        .analyze(execInfo)
-        .onComplete {
-          case Failure(thr) =>
-            logger.warn("Can't send message to the data profiler service", thr)
-          case _ => Unit
-        }
-    }
-  }
-
-  private def getCurrentExecutionUnit(unit: ExecutionUnit, modelVersionIdHeaderValue: AtomicReference[String]): ExecutionUnit = Try({
-    Option(modelVersionIdHeaderValue.get()).map(_.toLong)
-  }).map(s => unit.copy(stageInfo = unit.stageInfo.copy(modelVersionId = s)))
-    .getOrElse(unit)
-
-
-  private def getLatency(latencyHeaderValue: AtomicReference[String]): Try[TensorProto] = {
-    Try({
-      Option(latencyHeaderValue.get()).map(_.toLong)
-    }).map(v => TensorProto(
-      dtype = DataType.DT_INT64,
-      int64Val = Seq(v.getOrElse(0)),
-      tensorShape = Some(TensorShapeProto(dim = Seq(TensorShapeProto.Dim(1))))
-    ))
-  }
-
-
 }
