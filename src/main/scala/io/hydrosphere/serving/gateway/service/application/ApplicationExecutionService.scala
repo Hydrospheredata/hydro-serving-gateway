@@ -6,7 +6,7 @@ import cats.{Applicative, Traverse}
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.gateway.grpc.PredictionServiceAlg
+import io.hydrosphere.serving.gateway.grpc.{Prediction, PredictionServiceAlg}
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
@@ -52,7 +52,7 @@ case class StageInfo(
 class ApplicationExecutionServiceImpl[F[_]: Sync](
   applicationConfig: ApplicationConfig,
   applicationStorage: ApplicationStorage[F],
-  predictionServiceAlg: PredictionServiceAlg[F],
+  prediction: Prediction[F],
 )(implicit val ex: ExecutionContext) extends ApplicationExecutionService[F] with Logging {
 
   def listApps: F[Seq[StoredApplication]] = {
@@ -157,30 +157,30 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     }
   }
 
-  def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit) = {
-    if (applicationConfig.shadowingOn) {
-      val execInfo = ExecutionInformation(
-        metadata = Option(ExecutionMetadata(
-          applicationId = executionUnit.stageInfo.applicationId,
-          stageId = executionUnit.stageInfo.stageId,
-          modelVersionId = executionUnit.stageInfo.modelVersionId.getOrElse(-1),
-          signatureName = executionUnit.stageInfo.signatureName,
-          applicationRequestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""),
-          requestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
-          applicationNamespace = executionUnit.stageInfo.applicationNamespace.getOrElse(""),
-          dataTypes = executionUnit.stageInfo.dataProfileFields
-        )),
-        request = Option(predictRequest),
-        responseOrError = responseOrError
-      )
-      for {
-        _ <- predictionServiceAlg.sendToMonitoring(execInfo)
-        _ <- predictionServiceAlg.sendToProfiling(execInfo)
-      } yield ()
-    } else {
-      Applicative[F].pure(())
-    }
-  }
+//  def sendToDebug(responseOrError: ResponseOrError, predictRequest: PredictRequest, executionUnit: ExecutionUnit) = {
+//    if (applicationConfig.shadowingOn) {
+//      val execInfo = ExecutionInformation(
+//        metadata = Option(ExecutionMetadata(
+//          applicationId = executionUnit.stageInfo.applicationId,
+//          stageId = executionUnit.stageInfo.stageId,
+//          modelVersionId = executionUnit.stageInfo.modelVersionId.getOrElse(-1),
+//          signatureName = executionUnit.stageInfo.signatureName,
+//          applicationRequestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""),
+//          requestId = executionUnit.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
+//          applicationNamespace = executionUnit.stageInfo.applicationNamespace.getOrElse(""),
+//          dataTypes = executionUnit.stageInfo.dataProfileFields
+//        )),
+//        request = Option(predictRequest),
+//        responseOrError = responseOrError
+//      )
+//      for {
+//        _ <- predictionServiceAlg.sendToMonitoring(execInfo)
+//        _ <- predictionServiceAlg.sendToProfiling(execInfo)
+//      } yield ()
+//    } else {
+//      Applicative[F].pure(())
+//    }
+//  }
 
   def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
     //TODO Add request id for step
@@ -192,14 +192,15 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
             modelSpec = ModelSpec(signatureName = current.servicePath).some,
             inputs = res.outputs
           )
-          predictionServiceAlg.sendToExecUnit(current, request, tracingInfo).attempt.flatMap {
-            case Right(value) =>
-              sendToDebug(ResponseOrError.Response(value), request, current)
-              Applicative[F].pure(value)
-            case Left(error) =>
-              sendToDebug(ResponseOrError.Error(ExecutionError(error.getMessage)), request, current)
-              Sync[F].raiseError(error)
-          }
+          prediction.predict(current, request, tracingInfo)
+//          predictionServiceAlg.sendToExecUnit(current, request, tracingInfo).attempt.flatMap {
+//            case Right(value) =>
+//              sendToDebug(ResponseOrError.Response(value), request, current)
+//              Applicative[F].pure(value)
+//            case Left(error) =>
+//              sendToDebug(ResponseOrError.Error(ExecutionError(error.getMessage)), request, current)
+//              Sync[F].raiseError(error)
+//          }
         }
     }
   }
