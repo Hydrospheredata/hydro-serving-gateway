@@ -26,6 +26,7 @@ final case class ApplicationConfig(
   shadowingOn: Boolean,
   profilingDestination: String,
   monitoringDestination: String,
+  reqstoreDestination: String
 )
 
 final case class Configuration(
