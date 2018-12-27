@@ -36,22 +36,12 @@ object Main extends App with Logging {
     val sidecarChannel: Channel = ClientInterceptors
       .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
-//    val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
-//    val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
-//    val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
-
     logger.debug(s"Initializing application storage")
     val applicationStorage = new ApplicationInMemoryStorage[IO]()
 
     logger.debug(s"Initializing application update service")
     val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.sidecar)
 
-//    val grpcAlg = new PredictionServiceImpl[IO](
-//      appConfig.application,
-//      predictGrpcClient,
-//      profilerGrpcClient,
-//      monitoringGrpcClient
-//    )
     val grpcAlg = Prediction.envoyBased[IO](sidecarChannel, appConfig.application)
 
     logger.debug("Initializing app execution service")

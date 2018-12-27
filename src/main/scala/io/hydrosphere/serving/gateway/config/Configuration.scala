@@ -20,13 +20,28 @@ final case class HttpConfig(
   port: Int
 )
 
+sealed trait HttpServiceAddr
+object HttpServiceAddr {
+  final case class EnvoyRoute(name: String) extends HttpServiceAddr
+  final case class RealAddress(
+    host: String,
+    port: Int,
+    schema: String
+  ) extends HttpServiceAddr
+}
+
+final case class ReqStoreConfig(
+  enabled: Boolean,
+  address: HttpServiceAddr
+)
+
 final case class ApplicationConfig(
   grpc: GrpcConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
   profilingDestination: String,
   monitoringDestination: String,
-  reqstoreDestination: String
+  reqstore: ReqStoreConfig
 )
 
 final case class Configuration(

@@ -1,18 +1,20 @@
 package io.hydrosphere.serving.gateway.grpc
 
 import cats.effect.IO
+import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
-import io.hydrosphere.serving.tensorflow.tensor.TensorProto
 import org.scalatest.FunSpec
 
 class ReqStoreSpec extends FunSpec {
 
-  it("asdsad") {
+  describe("sending") {
     val dest = Destination.HostPort("localhost", 7265, "http")
-    val store = ReqStore.create[IO](dest)
+    val store = ReqStore.create[IO, PredictRequest](dest).unsafeRunSync()
 
-    val req = PredictRequest(None, Map.empty)
-    val out = store.save("yoyo", req).unsafeRunSync()
-    println(out)
+    it("sends empty message") {
+      val req = PredictRequest(None, Map.empty)
+      store.save("yoyo", req).unsafeRunSync()
+    }
+
   }
 }
