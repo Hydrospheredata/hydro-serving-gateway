@@ -2,6 +2,7 @@ package io.hydrosphere.serving.gateway.grpc
 
 import java.io.ByteArrayOutputStream
 
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
@@ -11,6 +12,7 @@ import akka.util.ByteString
 import cats.effect.{Async, Effect, IO}
 import cats.syntax.functor._
 import cats.syntax.either._
+import com.google.protobuf.CodedOutputStream
 import io.hydrosphere.serving.monitoring.monitoring.TraceData
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
@@ -92,7 +94,7 @@ object ReqStore {
             resp.entity.toStrict(1 second)
               .map(entity => {
                 val decoded = Either.catchNonFatal {
-                  val jsonS = entity.toString()
+                  val jsonS = new String(entity.data.toArray)
                   println(jsonS)
                   jsonS.parseJson.convertTo[TraceData]
                 }
@@ -107,24 +109,20 @@ object ReqStore {
 
     new ReqStore[F] {
       def save(name: String, request: PredictRequest): F[TraceData] = {
-        val os = new ByteArrayOutputStream()
-        request.writeTo(os)
-        val arr = os.toByteArray
-        println(arr.length)
+        val (byteSource, size) = toBytes(request)
+
+        val entity = HttpEntity.Default(
+          ContentTypes.`application/octet-stream`,
+          size,
+          byteSource
+        )
 
         val httpReq = HttpRequest(
           HttpMethods.POST,
           Uri("/test/put"),
-          entity = HttpEntity.Default(
-            ContentTypes.`application/octet-stream`,
-            arr.length,
-            Source.single(ByteString(arr))
-          ),
+          entity = entity,
           headers = destination.additionalHeaders
         )
-
-        println(httpReq)
-        println(httpReq.uri)
 
         F.asyncF(cb => {
           val submit = IO {
@@ -140,5 +138,14 @@ object ReqStore {
 
       }
     }
+  }
+
+
+  val empty = Source.single(ByteString(0))
+
+  def toBytes(req: PredictRequest): (Source[ByteString, NotUsed], Int) = {
+    val arr = req.toByteArray
+    if (arr.length == 0) empty -> 1
+    else Source(List(ByteString(1), ByteString(arr))) -> (arr.length + 1)
   }
 }
