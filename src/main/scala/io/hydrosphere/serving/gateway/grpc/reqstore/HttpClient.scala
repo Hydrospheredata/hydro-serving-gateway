@@ -34,7 +34,7 @@ object HttpClient {
     poolSize: Int
   )(implicit F: Async[F]): F[HttpClient[F]] = F.delay {
 
-    implicit val as = ActorSystem(s"simple-http-client-$host$port")
+    implicit val as = ActorSystem("akka-http-client")
 
     val am = ActorMaterializer()
     val (queue, term) = akkaResources.createQueue(am, host, port, poolSize)
