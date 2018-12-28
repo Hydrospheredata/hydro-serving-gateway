@@ -1,10 +1,12 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import cats.{Applicative, Functor, Monad}
+import cats.{Applicative, Functor, Monad, MonadError}
 import cats.data.NonEmptyList
 import cats.effect.{Async, IO, LiftIO}
 import cats.syntax.functor._
 import cats.syntax.flatMap._
+import cats.syntax.applicative._
+import cats.syntax.applicativeError._
 import io.grpc.Channel
 import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration, HttpServiceAddr}
 import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
@@ -104,23 +106,15 @@ object Reporting {
 
   type MKInfo[F[_]] = (PredictRequest, ExecutionUnit, ResponseOrError) => F[ExecutionInformation]
 
-  def default[F[_]: Async](channel: Channel, conf: Configuration): Reporting[F] = {
+  def default[F[_]](channel: Channel, conf: Configuration)(
+    implicit F: Async[F]
+  ): F[Reporting[F]] = {
+
     val appConf = conf.application
     val monitoring = Reporters.Monitoring.envoyBased(channel, appConf)
     val dataProfiler = Reporters.Profiling.envoyBased(channel, appConf)
 
-    val mkInfo =
-      if (appConf.reqstore.enabled) {
-      val destination = appConf.reqstore.address match {
-        case HttpServiceAddr.EnvoyRoute(name) =>
-          Destination.EnvoyRoute(conf.sidecar.host, conf.sidecar.port, name, "http")
-        case HttpServiceAddr.RealAddress(host, port, schema) =>
-          Destination.HostPort(host, port, schema)
-      }
-      val reqStore = ReqStore.create[F, (PredictRequest, ResponseOrError)](destination)
-    } else 
-
-    create0(NonEmptyList.of(monitoring, dataProfiler))
+    prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring, dataProfiler)))
   }
 
   // todo ContextShift + special ExecutionContext
@@ -138,6 +132,24 @@ object Reporting {
           reporters.traverse(r => r.send(info)).void
         })
       }
+    }
+  }
+
+  private def prepareMkInfo[F[_]](conf: Configuration)(implicit F: Async[F]): F[MKInfo[F]] = {
+    if (conf.application.reqstore.enabled) {
+      val destination = Destination.fromHttpServiceAddr(conf.application.reqstore.address, conf.sidecar)
+      ReqStore.create[F, (PredictRequest, ResponseOrError)](destination)
+        .map(s => {
+          (req: PredictRequest, eu: ExecutionUnit, resp: ResponseOrError) => {
+            s.save(eu.serviceName, (req, resp))
+              .attempt
+              .map(d => mkExecutionInformation(req, eu, resp, d.toOption))
+          }
+        })
+    } else {
+      val f = (req: PredictRequest, eu: ExecutionUnit, value: ResponseOrError) =>
+        mkExecutionInformation(req, eu, value, None).pure
+      f.pure
     }
   }
 

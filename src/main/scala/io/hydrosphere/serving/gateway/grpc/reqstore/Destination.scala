@@ -1,6 +1,7 @@
 package io.hydrosphere.serving.gateway.grpc.reqstore
 
 import akka.http.scaladsl.model.{HttpHeader, Uri, headers}
+import io.hydrosphere.serving.gateway.config.{HttpServiceAddr, SidecarConfig}
 
 sealed trait Destination {
   def host: String
@@ -30,5 +31,16 @@ object Destination {
     override val additionalHeaders: List[HttpHeader] = List.empty
     override val uri: Uri = Uri(s"$schema://$host:$port")
   }
+
+  def fromHttpServiceAddr(
+    addr: HttpServiceAddr,
+    envoyConf: SidecarConfig
+  ): Destination =
+    addr match {
+      case HttpServiceAddr.EnvoyRoute(name) =>
+        Destination.EnvoyRoute(envoyConf.host, envoyConf.port, name, "http")
+      case HttpServiceAddr.RealAddress(host, port, schema) =>
+        Destination.HostPort(host, port, schema)
+    }
 }
 

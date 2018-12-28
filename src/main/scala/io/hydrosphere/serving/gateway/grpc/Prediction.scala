@@ -3,15 +3,16 @@ package io.hydrosphere.serving.gateway.grpc
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.MonadError
-import cats.effect.{IO, LiftIO}
+import cats.effect.{Async, IO, LiftIO}
 import cats.instances.function._
+import cats.syntax.applicative._
 import cats.syntax.applicativeError._
 import cats.syntax.compose._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.syntax.monadError._
 import io.grpc.Channel
-import io.hydrosphere.serving.gateway.config.ApplicationConfig
+import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
 import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionError
@@ -38,13 +39,19 @@ object Prediction {
 
   def envoyBased[F[_]: LiftIO](
     channel: Channel,
-    conf: ApplicationConfig
-  )(implicit F: MonadError[F, Throwable]): Prediction[F] = {
+    conf: Configuration
+  )(implicit F: Async[F]): F[Prediction[F]] = {
 
-    val reporting = if (conf.shadowingOn) Reporting.default[F](channel, conf) else Reporting.noop[F]
     val predictGrpc = PredictionServiceGrpc.stub(channel)
-    val prefictF = overGrpc(conf.grpc.deadline, predictGrpc)
-    create0(prefictF, reporting)
+    val prefictF = overGrpc(conf.application.grpc.deadline, predictGrpc)
+
+    val mkReporting = if (conf.application.shadowingOn) {
+      Reporting.default[F](channel, conf)
+    } else {
+      F.pure(Reporting.noop[F])
+    }
+
+    mkReporting map  (create0(prefictF, _))
   }
 
   def create0[F[_]](exec: PredictFunc[F], reporting: Reporting[F])(
