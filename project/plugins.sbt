@@ -7,5 +7,5 @@ addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.5.1")
 
 libraryDependencies ++= Seq(
   "com.spotify" % "docker-client" % "8.8.0",
-  "com.thesamet.scalapb" %% "compilerplugin" % "0.8.2"
+  "com.thesamet.scalapb" %% "compilerplugin" % "0.7.4"
 )

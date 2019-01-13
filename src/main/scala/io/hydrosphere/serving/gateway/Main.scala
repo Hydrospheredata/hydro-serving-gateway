@@ -5,14 +5,11 @@ import java.util.concurrent.TimeUnit
 import cats.effect.{IO, LiftIO}
 import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.discovery.application.XDSApplicationUpdateService
-import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction, PredictionServiceImpl}
+import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
 import io.hydrosphere.serving.gateway.http.HttpApi
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationInMemoryStorage
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
-import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration

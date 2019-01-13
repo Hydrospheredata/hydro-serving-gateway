@@ -1,21 +1,20 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import cats.{Applicative, Functor, Monad, MonadError}
 import cats.data.NonEmptyList
 import cats.effect.{Async, IO, LiftIO}
-import cats.syntax.functor._
-import cats.syntax.flatMap._
 import cats.syntax.applicative._
 import cats.syntax.applicativeError._
+import cats.syntax.flatMap._
+import cats.syntax.functor._
+import cats.{Applicative, Functor, Monad}
 import io.grpc.Channel
-import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration, HttpServiceAddr}
+import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
 import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
 import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
-import io.hydrosphere.serving.monitoring.monitoring.{ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc, TraceData}
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
-import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
+import io.hydrosphere.serving.monitoring.monitoring.{ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc, TraceData}
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
 import scala.concurrent.Future
@@ -35,29 +34,19 @@ object Reporter {
   def fromFuture[F[_]: Functor, A](f: ExecutionInformation => Future[A])(implicit F: LiftIO[F]): Reporter[F] =
     Reporter(info => F.liftIO(IO.fromFuture(IO(f(info)))).void)
 
-
-  def profilingGrpc[F[_]: Functor: LiftIO](
-    deadline: Duration,
-    destination: String,
-    grpcClient: DataProfilerServiceGrpc.DataProfilerServiceStub
-  ): Reporter[F] = {
-    Reporter.fromFuture(info => {
-      grpcClient
-        .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, destination)
-        .withDeadlineAfter(deadline.length, deadline.unit)
-        .analyze(info)
-    })
-  }
-
 }
 
 object Reporters {
 
   object Monitoring {
 
-    def envoyBased[F[_]: Functor: LiftIO](channel: Channel, appConf: ApplicationConfig): Reporter[F] = {
+    def envoyBased[F[_]: Functor: LiftIO](
+      channel: Channel,
+      destination: String,
+      deadline: Duration
+    ): Reporter[F] = {
       val stub = MonitoringServiceGrpc.stub(channel)
-      monitoringGrpc(appConf.grpc.deadline, appConf.monitoringDestination, stub)
+      monitoringGrpc(deadline, destination, stub)
     }
 
     def monitoringGrpc[F[_] : Functor : LiftIO](
@@ -75,26 +64,6 @@ object Reporters {
 
   }
 
-  object Profiling {
-
-    def envoyBased[F[_]: Functor: LiftIO](channel: Channel, appConf: ApplicationConfig): Reporter[F] = {
-      val stub = DataProfilerServiceGrpc.stub(channel)
-      profilingGrpc(appConf.grpc.deadline, appConf.profilingDestination, stub)
-    }
-
-    def profilingGrpc[F[_]: Functor: LiftIO](
-      deadline: Duration,
-      destination: String,
-      grpcClient: DataProfilerServiceGrpc.DataProfilerServiceStub
-    ): Reporter[F] = {
-      Reporter.fromFuture(info => {
-        grpcClient
-          .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, destination)
-          .withDeadlineAfter(deadline.length, deadline.unit)
-          .analyze(info)
-      })
-    }
-  }
 }
 
 
@@ -111,8 +80,9 @@ object Reporting {
   ): F[Reporting[F]] = {
 
     val appConf = conf.application
-    val monitoring = Reporters.Monitoring.envoyBased(channel, appConf)
-    val dataProfiler = Reporters.Profiling.envoyBased(channel, appConf)
+    val deadline = appConf.grpc.deadline
+    val monitoring = Reporters.Monitoring.envoyBased(channel, appConf.monitoringDestination, deadline)
+    val dataProfiler = Reporters.Monitoring.envoyBased(channel, appConf.profilingDestination, deadline)
 
     prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring, dataProfiler)))
   }
@@ -168,7 +138,6 @@ object Reporting {
         applicationRequestId = eu.stageInfo.applicationRequestId.getOrElse(""),
         requestId = eu.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
         applicationNamespace = eu.stageInfo.applicationNamespace.getOrElse(""),
-        dataTypes = eu.stageInfo.dataProfileFields,
         traceData = traceData
       )),
       request = Option(request),

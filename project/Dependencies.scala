@@ -5,7 +5,7 @@ object Dependencies {
   val akkaHttpVersion = "10.0.11"
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "0.1.24-SNAPSHOT"
+  val servingGrpcScala = "0.2.1"
   val envoyDataPlaneApi = "v1.6.0_1"
   val catsV = "1.1.0"
 

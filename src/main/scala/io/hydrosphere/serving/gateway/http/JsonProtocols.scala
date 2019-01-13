@@ -44,7 +44,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
     override def read(json: JsValue): HError = ???
   }
 
-  implicit val gwService = jsonFormat3(StoredService.apply)
+  implicit val gwService = jsonFormat2(StoredService.apply)
   implicit val gwStageFormat = new RootJsonFormat[StoredStage] {
     override def write(obj: StoredStage): JsValue = {
       JsObject(
