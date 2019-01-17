@@ -3,17 +3,16 @@ package io.hydrosphere.serving.gateway.persistence.application
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.manager.grpc.applications.Application
-import io.hydrosphere.serving.monitoring.data_profile_types.DataProfileType
+import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
 
 case class StoredStage(
   id: String,
   services: Seq[StoredService],
   signature: Option[ModelSignature],
-  dataProfileFields: Map[String, DataProfileType]
+  //dataProfileFields: Map[String, DataProfileType]
 )
 
 case class StoredService(
-  runtimeId: Long,
   modelVersionId: Option[Long],
   weight: Int
 )
@@ -41,10 +40,8 @@ object StoredApplication {
           StoredStage(
             id = stage.stageId,
             signature = stage.signature,
-            dataProfileFields = stage.dataTypes,
             services = stage.services.map { service =>
               StoredService(
-                runtimeId = service.runtime.map(_.id).getOrElse(0L),
                 modelVersionId = service.modelVersion.map(_.id),
                 weight = service.weight
               )}.toList

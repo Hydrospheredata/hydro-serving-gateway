@@ -5,14 +5,11 @@ import java.util.concurrent.TimeUnit
 import cats.effect.{IO, LiftIO}
 import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.discovery.application.XDSApplicationUpdateService
-import io.hydrosphere.serving.gateway.grpc.{GrpcApi, PredictionServiceImpl}
+import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
 import io.hydrosphere.serving.gateway.http.HttpApi
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationInMemoryStorage
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc
-import io.hydrosphere.serving.profiler.profiler.DataProfilerServiceGrpc
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
@@ -36,22 +33,13 @@ object Main extends App with Logging {
     val sidecarChannel: Channel = ClientInterceptors
       .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
-    val predictGrpcClient = PredictionServiceGrpc.stub(sidecarChannel)
-    val profilerGrpcClient = DataProfilerServiceGrpc.stub(sidecarChannel)
-    val monitoringGrpcClient = MonitoringServiceGrpc.stub(sidecarChannel)
-
     logger.debug(s"Initializing application storage")
     val applicationStorage = new ApplicationInMemoryStorage[IO]()
 
     logger.debug(s"Initializing application update service")
     val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.sidecar)
 
-    val grpcAlg = new PredictionServiceImpl[IO](
-      appConfig.application,
-      predictGrpcClient,
-      profilerGrpcClient,
-      monitoringGrpcClient
-    )
+    val grpcAlg = Prediction.envoyBased[IO](sidecarChannel, appConfig).unsafeRunSync()
 
     logger.debug("Initializing app execution service")
     val gatewayPredictionService = new ApplicationExecutionServiceImpl(
