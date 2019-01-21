@@ -63,7 +63,7 @@ class HttpApi[F[_]: Effect](
   val predictionController = new JsonPredictionController(applicationExecutionService)
 
   val routes: Route = CorsDirectives.cors(
-    CorsSettings.defaultSettings.copy(allowedMethods = Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))
+    CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))
   ) {
     handleExceptions(commonExceptionHandler) {
       predictionController.routes ~
