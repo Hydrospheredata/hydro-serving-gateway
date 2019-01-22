@@ -31,6 +31,7 @@ object ToByteSource {
         if (arr.length == 0) empty
         else ByteSource(arr.length + 1, Source(List(ByteString(1), ByteString(arr))))
       }
+
     }
 
   implicit def forPbMessage[A <: scalapb.GeneratedMessage]: ToByteSource[A] =

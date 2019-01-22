@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.grpc
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.MonadError
-import cats.effect.{Async, IO, LiftIO}
+import cats.effect._
 import cats.instances.function._
 import cats.syntax.applicativeError._
 import cats.syntax.compose._
@@ -39,7 +39,7 @@ object Prediction {
   def envoyBased[F[_]: LiftIO](
     channel: Channel,
     conf: Configuration
-  )(implicit F: Async[F]): F[Prediction[F]] = {
+  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
 
     val predictGrpc = PredictionServiceGrpc.stub(channel)
 

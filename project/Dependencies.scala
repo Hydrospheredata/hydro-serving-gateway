@@ -1,13 +1,16 @@
 import sbt._
 
 object Dependencies {
-  val akkaVersion = "2.5.8"
-  val akkaHttpVersion = "10.0.11"
+  val akkaVersion = "2.5.19"
+  val akkaHttpVersion = "10.1.7"
+
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "0.2.1"
-  val envoyDataPlaneApi = "v1.6.0_1"
-  val catsV = "1.1.0"
+  val servingGrpcScala = "0.2.2"
+  val envoyDataPlaneApi = "2.0.0"
+
+  val catsVersion = "1.3.1"
+  val catsEffectVersion = "1.0.0"
 
   lazy val akkaDependencies = Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -19,17 +22,15 @@ object Dependencies {
     "com.typesafe.akka" %% "akka-http-core" % akkaHttpVersion,
     "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
     "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
-    "com.typesafe.akka" %% "akka-http-xml" % akkaHttpVersion,
-    "com.github.swagger-akka-http" %% "swagger-akka-http" % "0.11.0" exclude("javax.ws.rs", "jsr311-api"),
-    "ch.megard" %% "akka-http-cors" % "0.2.1"
+    "ch.megard" %% "akka-http-cors" % "0.3.4"
   )
 
   lazy val grpcDependencies = Seq(
-    "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion exclude("com.google.api.grpc", "proto-google-common-protos"),
-    "io.hydrosphere" %% "serving-grpc-scala" % servingGrpcScala exclude("com.google.api.grpc", "proto-google-common-protos"),
-    "io.grpc" % "grpc-netty" % scalapb.compiler.Version.grpcJavaVersion exclude("com.google.api.grpc", "proto-google-common-protos"),
-    "io.hydrosphere" %% "envoy-data-plane-api" % envoyDataPlaneApi exclude("com.google.api.grpc", "proto-google-common-protos")
-  )
+    "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
+    "io.hydrosphere" %% "serving-grpc-scala" % servingGrpcScala,
+    "io.grpc" % "grpc-netty" % scalapb.compiler.Version.grpcJavaVersion,
+    "io.hydrosphere" %% "envoy-data-plane-api" % envoyDataPlaneApi
+  ).map(m => m.exclude("com.google.api.grpc", "googleapis-common-protos"))
 
   lazy val testDependencies = Seq(
     "org.mockito" % "mockito-all" % "1.10.19" % "test",
@@ -53,8 +54,8 @@ object Dependencies {
     akkaHttpDependencies ++
     grpcDependencies ++
     Seq(
-      "org.typelevel" %% "cats-core" % catsV,
-      "org.typelevel" %% "cats-effect" % "1.0.0",
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
       "com.github.pureconfig" %% "pureconfig" % "0.9.1"
     )
 }
