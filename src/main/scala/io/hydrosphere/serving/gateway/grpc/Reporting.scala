@@ -1,7 +1,10 @@
 package io.hydrosphere.serving.gateway.grpc
 
+import java.util.concurrent.{Executor, ExecutorService, Executors}
+
 import cats.data.NonEmptyList
-import cats.effect.{Async, IO, LiftIO}
+import cats.effect._
+import cats.effect.implicits._
 import cats.syntax.applicative._
 import cats.syntax.applicativeError._
 import cats.syntax.flatMap._
@@ -17,7 +20,7 @@ import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.Monito
 import io.hydrosphere.serving.monitoring.monitoring.{ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc, TraceData}
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 
 trait Reporter[F[_]] {
@@ -76,31 +79,34 @@ object Reporting {
   type MKInfo[F[_]] = (PredictRequest, ExecutionUnit, ResponseOrError) => F[ExecutionInformation]
 
   def default[F[_]](channel: Channel, conf: Configuration)(
-    implicit F: Async[F]
+    implicit F: Concurrent[F], cs: ContextShift[F]
   ): F[Reporting[F]] = {
 
     val appConf = conf.application
     val deadline = appConf.grpc.deadline
     val monitoring = Reporters.Monitoring.envoyBased(channel, appConf.monitoringDestination, deadline)
-    val dataProfiler = Reporters.Monitoring.envoyBased(channel, appConf.profilingDestination, deadline)
 
-    prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring, dataProfiler)))
+    val es = Executors.newCachedThreadPool()
+    val ec = ExecutionContext.fromExecutorService(es)
+    prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring), ec))
   }
 
-  // todo ContextShift + special ExecutionContext
-  def create0[F[_]: Monad](
+  def create0[F[_]: Concurrent](
     mkInfo: (PredictRequest, ExecutionUnit, ResponseOrError) => F[ExecutionInformation],
-    reporters: NonEmptyList[Reporter[F]]
-  ): Reporting[F] = {
+    reporters: NonEmptyList[Reporter[F]],
+    ec: ExecutionContext
+  )(implicit cs: ContextShift[F]): Reporting[F] = {
     new Reporting[F] {
       def report(
         request: PredictRequest,
         eu: ExecutionUnit,
         value: ResponseOrError
       ): F[Unit] = {
-        mkInfo(request, eu, value).flatMap(info => {
-          reporters.traverse(r => r.send(info)).void
-        })
+        cs.evalOn(ec) {
+         mkInfo(request, eu, value).flatMap(info => {
+           reporters.traverse(r => r.send(info)).attempt.start
+         })
+        }.void
       }
     }
   }

@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.grpc
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.MonadError
-import cats.effect.{Async, IO, LiftIO}
+import cats.effect._
 import cats.instances.function._
 import cats.syntax.applicative._
 import cats.syntax.applicativeError._
@@ -40,18 +40,19 @@ object Prediction {
   def envoyBased[F[_]: LiftIO](
     channel: Channel,
     conf: Configuration
-  )(implicit F: Async[F]): F[Prediction[F]] = {
+  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
 
     val predictGrpc = PredictionServiceGrpc.stub(channel)
     val prefictF = overGrpc(conf.application.grpc.deadline, predictGrpc)
 
-    val mkReporting = if (conf.application.shadowingOn) {
-      Reporting.default[F](channel, conf)
-    } else {
-      F.pure(Reporting.noop[F])
-    }
-
-    mkReporting map  (create0(prefictF, _))
+//    val mkReporting = if (conf.application.shadowingOn) {
+//      Reporting.default[F](channel, conf)
+//    } else {
+//      F.pure(Reporting.noop[F])
+//    }
+//
+//    mkReporting map  (create0(prefictF, _))
+    F.pure(create0(prefictF, Reporting.noop[F]))
   }
 
   def create0[F[_]](exec: PredictFunc[F], reporting: Reporting[F])(
@@ -69,7 +70,9 @@ object Prediction {
           .attempt
           .flatMap(out => {
             val value = out match {
-              case Left(e) => ResponseOrError.Error(ExecutionError(e.getMessage))
+              case Left(e) =>
+                println(s"HERE HERE $e")
+                ResponseOrError.Error(ExecutionError(e.getMessage))
               case Right(v) => ResponseOrError.Response(v)
             }
             reporting.report(req, eu, value).as(out)
