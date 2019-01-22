@@ -8,7 +8,6 @@ import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
-import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.model.api.{Result, TensorUtil}
@@ -34,17 +33,12 @@ trait ApplicationExecutionService[F[_]] {
 case class ExecutionUnit(
   serviceName: String,
   servicePath: String,
-  stageInfo: StageInfo,
-)
-
-case class StageInfo(
+  modelVersionId: Long,
   applicationRequestId: Option[String],
   signatureName: String,
   applicationId: Long,
-  modelVersionId: Option[Long],
   stageId: String,
   applicationNamespace: Option[String],
-  dataProfileFields: Map[String, DataProfileType] = Map.empty
 )
 
 class ApplicationExecutionServiceImpl[F[_]: Sync](
@@ -165,7 +159,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
             modelSpec = ModelSpec(signatureName = current.servicePath).some,
             inputs = res.outputs
           )
-          prediction.predict(current, request, tracingInfo)
+          prediction.predict(current, request, tracingInfo).map(_.response)
         }
     }
   }
@@ -175,21 +169,18 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
           case Some(servicePath) =>
-            val modelVersionId = application.executionGraph.stages.headOption.flatMap(
-              _.services.headOption.flatMap(_.modelVersionId))
+            val modelVersionId = stage.services.head.modelVersionId
 
-            val stageInfo = StageInfo(
-              modelVersionId = modelVersionId,
+
+            val unit = ExecutionUnit(
+              serviceName = stage.id,
+              servicePath = servicePath.signatureName,
               applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
               applicationId = application.id,
               signatureName = servicePath.signatureName,
               stageId = stage.id,
-              applicationNamespace = application.namespace
-            )
-            val unit = ExecutionUnit(
-              serviceName = stage.id,
-              servicePath = servicePath.signatureName,
-              stageInfo = stageInfo
+              applicationNamespace = application.namespace,
+              modelVersionId = modelVersionId
             )
             servePipeline(Seq(unit), request, tracingInfo)
           case None => Sync[F].raiseError(InvalidArgument("ModelSpec in request is not specified"))
@@ -199,23 +190,17 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
           case (stage, idx) =>
             stage.signature match {
               case Some(signature) =>
-                val vers = stage.services.headOption.flatMap(_.modelVersionId)
-                val stageInfo = StageInfo(
-                  //TODO will be wrong modelVersionId during blue-green
-                  //TODO Get this value from sidecar or in sidecar
-                  modelVersionId = vers,
-                  applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
-                  applicationId = application.id,
-                  signatureName = signature.signatureName,
-                  stageId = stage.id,
-                  applicationNamespace = application.namespace
-                )
+                val vers = stage.services.head.modelVersionId
                 Applicative[F].pure(
                   ExecutionUnit(
                     serviceName = stage.id,
-                    //servicePath = stage.services.head.signature.get.signatureName, // FIXME dirty hack to fix service signatures
                     servicePath = signature.signatureName,
-                    stageInfo = stageInfo
+                    modelVersionId = vers, // this is a safety id in case envoy doesn't return correct header
+                    applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
+                    applicationId = application.id,
+                    signatureName = signature.signatureName,
+                    stageId = stage.id,
+                    applicationNamespace = application.namespace
                   )
                 )
               case None =>

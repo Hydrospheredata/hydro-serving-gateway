@@ -5,22 +5,21 @@ import java.util.concurrent.atomic.AtomicReference
 import cats.MonadError
 import cats.effect.{Async, IO, LiftIO}
 import cats.instances.function._
-import cats.syntax.applicative._
 import cats.syntax.applicativeError._
 import cats.syntax.compose._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.syntax.monadError._
 import io.grpc.Channel
-import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
+import io.hydrosphere.serving.gateway.config.Configuration
+import io.hydrosphere.serving.gateway.grpc
 import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionError
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
+import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 
 import scala.concurrent.duration.Duration
+
 
 trait Prediction[F[_]] {
 
@@ -28,14 +27,14 @@ trait Prediction[F[_]] {
     unit: ExecutionUnit,
     request: PredictRequest,
     tracingInfo: Option[RequestTracingInfo]
-  ): F[PredictResponse]
+  ): F[PredictionWithMetadata]
 
 }
 
 object Prediction {
 
   type PredictionStub = PredictionServiceGrpc.PredictionServiceStub
-  type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictResponse]
+  type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictionWithMetadata]
 
   def envoyBased[F[_]: LiftIO](
     channel: Channel,
@@ -43,6 +42,7 @@ object Prediction {
   )(implicit F: Async[F]): F[Prediction[F]] = {
 
     val predictGrpc = PredictionServiceGrpc.stub(channel)
+
     val prefictF = overGrpc(conf.application.grpc.deadline, predictGrpc)
 
     val mkReporting = if (conf.application.shadowingOn) {
@@ -63,16 +63,17 @@ object Prediction {
         eu: ExecutionUnit,
         req: PredictRequest,
         tracingInfo: Option[RequestTracingInfo]
-      ): F[PredictResponse] = {
+      ): F[PredictionWithMetadata] = {
 
         exec(eu, req, tracingInfo)
           .attempt
           .flatMap(out => {
-            val value = out match {
-              case Left(e) => ResponseOrError.Error(ExecutionError(e.getMessage))
-              case Right(v) => ResponseOrError.Response(v)
+            out match {
+              case Left(e) =>
+                reporting.report(req, eu, Left(e)).as(out)
+              case Right(v) =>
+                reporting.report(req, eu, Right(v)).as(out)
             }
-            reporting.report(req, eu, value).as(out)
           })
           .rethrow
       }
@@ -84,25 +85,32 @@ object Prediction {
 
     (eu: ExecutionUnit, req: PredictRequest, tracingInfo: Option[RequestTracingInfo]) => {
 
-      val io = IO.delay {
+      val io = IO.suspend {
         val initReq = grpcClient
           .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, eu.serviceName)
           .withDeadlineAfter(deadline.length, deadline.unit)
 
+        val modelVersionHeader = new AtomicReference[String](null)
+        val envoyUpstreamTime = new AtomicReference[String](null)
         val setTracingF = tracingInfo.fold(identity[PredictionStub](_))(i => setTracingHeaders(_, i))
-        val setCallOptsF = setCallOptions(_)
-        val reqBuilder = (setCallOptsF >>> setTracingF)(initReq)
-        reqBuilder.predict(req)
+        val setCallOptsF = setCallOptions(modelVersionHeader, envoyUpstreamTime)
+        val reqBuilder = (setCallOptsF >>> setTracingF) (initReq)
+        IO.fromFuture(IO(reqBuilder.predict(req)))
+          .map { result =>
+            PredictionWithMetadata(
+              response = result,
+              modelVersionId = Option(modelVersionHeader.get()),
+              latency = Option(envoyUpstreamTime.get())
+            )
+          }
       }
-      F.liftIO(IO.fromFuture(io))
+      F.liftIO(io)
     }
   }
 
-  private def setCallOptions(req: PredictionStub): PredictionStub = {
-    val modelVersionIdHeaderValue = new AtomicReference[String](null)
-    val latencyHeaderValue = new AtomicReference[String](null)
-    req.withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionIdHeaderValue)
-      .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, latencyHeaderValue)
+  private def setCallOptions(modelVersionHeader: AtomicReference[String], envoyUpstreamTime: AtomicReference[String]): PredictionStub => grpc.Prediction.PredictionStub =  (req: PredictionStub) => {
+    req.withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionHeader)
+      .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, envoyUpstreamTime)
   }
 
   private def setTracingHeaders(req: PredictionStub, tracingInfo: RequestTracingInfo ): PredictionStub = {

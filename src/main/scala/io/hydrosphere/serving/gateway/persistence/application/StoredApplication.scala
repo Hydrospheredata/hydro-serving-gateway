@@ -3,17 +3,17 @@ package io.hydrosphere.serving.gateway.persistence.application
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.manager.grpc.applications.Application
-import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
+
+import scala.util.Try
 
 case class StoredStage(
   id: String,
   services: Seq[StoredService],
   signature: Option[ModelSignature],
-  //dataProfileFields: Map[String, DataProfileType]
 )
 
 case class StoredService(
-  modelVersionId: Option[Long],
+  modelVersionId: Long,
   weight: Int
 )
 
@@ -33,7 +33,7 @@ case class StoredApplication(
 
 object StoredApplication {
   // NOTE warnings missing fields?
-  def fromProto(app: Application) = {
+  def fromProto(app: Application) = Try {
     val executionGraph = app.executionGraph.map { execGraph =>
       StoredExecutionGraph(
         stages = execGraph.stages.map { stage =>
@@ -42,11 +42,14 @@ object StoredApplication {
             signature = stage.signature,
             services = stage.services.map { service =>
               StoredService(
-                modelVersionId = service.modelVersion.map(_.id),
+                modelVersionId = service.modelVersion.map(_.id).getOrElse(throw new IllegalArgumentException("ExecutionService cannot be without modelVersionId")),
                 weight = service.weight
-              )}.toList
-          )}.toList
-      )}
+              )
+            }.toList
+          )
+        }.toList
+      )
+    }
 
     val namespace = if (app.namespace.isEmpty) {
       None
@@ -58,8 +61,8 @@ object StoredApplication {
       id = app.id,
       name = app.name,
       namespace = namespace,
-      contract = app.contract.getOrElse(ModelContract.defaultInstance),
-      executionGraph = executionGraph.getOrElse(StoredExecutionGraph(stages = Seq.empty))
+      contract = app.contract.getOrElse(throw new IllegalArgumentException("Application cannot be without modelContract")),
+      executionGraph = executionGraph.getOrElse(throw new IllegalArgumentException("Application cannot be without executionGraph"))
     )
   }
 }

@@ -6,7 +6,7 @@ import cats.implicits._
 import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
-import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, StageInfo}
+import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
@@ -14,47 +14,47 @@ import org.scalatest.{FunSpec, Matchers}
 
 class PredictionSpec extends FunSpec with Matchers {
 
-  val stageInfo = StageInfo(
+  val executionUnit = ExecutionUnit(
+    "a",
+    "path",
     applicationRequestId = Some("reqId"),
     signatureName = "sigName",
     applicationId = 1L,
-    modelVersionId = None,
+    modelVersionId = 1,
     stageId = "stageId",
-    applicationNamespace = None,
-    dataProfileFields = Map.empty
+    applicationNamespace = None
   )
-  val executionUnit = ExecutionUnit("a", "path", stageInfo)
 
   val emptyRequest = PredictRequest(None, Map.empty)
   val emptyResponse = PredictResponse(Map.empty, Map.empty)
+  val emptyResponseWithMeta = PredictionWithMetadata(emptyResponse, None, None)
 
   describe("call reporting") {
 
-    type RespOrError = ExecutionInformation.ResponseOrError
-    def testReporting(ref: Ref[IO, List[RespOrError]]): Reporting[IO] = {
+    def testReporting(ref: Ref[IO, List[PredictionWithMetadata.PredictionOrException]]): Reporting[IO] = {
       new Reporting[IO] {
         def report(
           req: PredictRequest,
           eu: ExecutionUnit,
-          value: ExecutionInformation.ResponseOrError): IO[Unit] = ref.update(acc => value :: acc)
+          value: PredictionWithMetadata.PredictionOrException): IO[Unit] = ref.update(acc => value :: acc)
       }
     }
 
     it("should report success") {
-      val ref = Ref.unsafe[IO, List[RespOrError]](List.empty)
+      val ref = Ref.unsafe[IO, List[PredictionWithMetadata.PredictionOrException]](List.empty)
       val prediction = Prediction.create0[IO](
-        (_, _, _) => IO.pure(emptyResponse),
+        (_, _, _) => IO.pure(emptyResponseWithMeta),
         testReporting(ref)
       )
 
       val out = (prediction.predict(executionUnit, emptyRequest, None).attempt *> ref.get)
         .unsafeRunSync()
 
-      out.head shouldBe ResponseOrError.Response(emptyResponse)
+      out.head shouldBe Right(emptyResponseWithMeta)
     }
 
     it("should report error") {
-      val ref = Ref.unsafe[IO, List[RespOrError]](List.empty)
+      val ref = Ref.unsafe[IO, List[PredictionWithMetadata.PredictionOrException]](List.empty)
       val prediction = Prediction.create0[IO](
         (_, _, _) => IO.raiseError(new Exception("err")),
         testReporting(ref)
@@ -63,7 +63,7 @@ class PredictionSpec extends FunSpec with Matchers {
       val out = (prediction.predict(executionUnit, emptyRequest, None).attempt *> ref.get)
         .unsafeRunSync()
 
-      out.head shouldBe a[ResponseOrError.Error]
+      out.head shouldBe a[Left[Throwable, PredictionWithMetadata]]
     }
 
   }

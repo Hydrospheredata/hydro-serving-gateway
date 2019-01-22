@@ -9,16 +9,18 @@ import cats.syntax.functor._
 import cats.{Applicative, Functor, Monad}
 import io.grpc.Channel
 import io.hydrosphere.serving.gateway.config.Configuration
+import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
 import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
 import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
 import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
-import io.hydrosphere.serving.monitoring.monitoring.{ExecutionInformation, ExecutionMetadata, MonitoringServiceGrpc, TraceData}
+import io.hydrosphere.serving.monitoring.monitoring._
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
+import scala.util.Try
 
 trait Reporter[F[_]] {
   def send(execInfo: ExecutionInformation): F[Unit]
@@ -68,12 +70,12 @@ object Reporters {
 
 
 trait Reporting[F[_]] {
-  def report(request: PredictRequest, eu: ExecutionUnit, value: ResponseOrError): F[Unit]
+  def report(request: PredictRequest, eu: ExecutionUnit, value: PredictionOrException): F[Unit]
 }
 
 object Reporting {
 
-  type MKInfo[F[_]] = (PredictRequest, ExecutionUnit, ResponseOrError) => F[ExecutionInformation]
+  type MKInfo[F[_]] = (PredictRequest, ExecutionUnit, PredictionOrException) => F[ExecutionInformation]
 
   def default[F[_]](channel: Channel, conf: Configuration)(
     implicit F: Async[F]
@@ -82,21 +84,20 @@ object Reporting {
     val appConf = conf.application
     val deadline = appConf.grpc.deadline
     val monitoring = Reporters.Monitoring.envoyBased(channel, appConf.monitoringDestination, deadline)
-    val dataProfiler = Reporters.Monitoring.envoyBased(channel, appConf.profilingDestination, deadline)
 
-    prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring, dataProfiler)))
+    prepareMkInfo(conf) map (create0(_, NonEmptyList.of(monitoring)))
   }
 
   // todo ContextShift + special ExecutionContext
-  def create0[F[_]: Monad](
-    mkInfo: (PredictRequest, ExecutionUnit, ResponseOrError) => F[ExecutionInformation],
+  def create0[F[_] : Monad](
+    mkInfo: (PredictRequest, ExecutionUnit, PredictionOrException) => F[ExecutionInformation],
     reporters: NonEmptyList[Reporter[F]]
   ): Reporting[F] = {
     new Reporting[F] {
       def report(
         request: PredictRequest,
         eu: ExecutionUnit,
-        value: ResponseOrError
+        value: PredictionOrException
       ): F[Unit] = {
         mkInfo(request, eu, value).flatMap(info => {
           reporters.traverse(r => r.send(info)).void
@@ -110,41 +111,60 @@ object Reporting {
       val destination = Destination.fromHttpServiceAddr(conf.application.reqstore.address, conf.sidecar)
       ReqStore.create[F, (PredictRequest, ResponseOrError)](destination)
         .map(s => {
-          (req: PredictRequest, eu: ExecutionUnit, resp: ResponseOrError) => {
-            s.save(eu.serviceName, (req, resp))
+          (req: PredictRequest, eu: ExecutionUnit, resp: PredictionOrException) => {
+            s.save(eu.serviceName, (req, responseOrError(resp)))
               .attempt
               .map(d => mkExecutionInformation(req, eu, resp, d.toOption))
           }
         })
     } else {
-      val f = (req: PredictRequest, eu: ExecutionUnit, value: ResponseOrError) =>
+      val f = (req: PredictRequest, eu: ExecutionUnit, value: PredictionOrException) =>
         mkExecutionInformation(req, eu, value, None).pure
       f.pure
+    }
+  }
+
+
+  def responseOrError(poe: PredictionOrException) = {
+    poe match {
+      case Left(err) => ResponseOrError.Error(ExecutionError(err.getMessage))
+      case Right(v) => ResponseOrError.Response(v.response)
     }
   }
 
   private def mkExecutionInformation(
     request: PredictRequest,
     eu: ExecutionUnit,
-    value: ResponseOrError,
+    value: PredictionOrException,
     traceData: Option[TraceData]
   ): ExecutionInformation = {
-    ExecutionInformation(
-      metadata = Option(ExecutionMetadata(
-        applicationId = eu.stageInfo.applicationId,
-        stageId = eu.stageInfo.stageId,
-        modelVersionId = eu.stageInfo.modelVersionId.getOrElse(-1),
-        signatureName = eu.stageInfo.signatureName,
-        applicationRequestId = eu.stageInfo.applicationRequestId.getOrElse(""),
-        requestId = eu.stageInfo.applicationRequestId.getOrElse(""), //todo fetch from response,
-        applicationNamespace = eu.stageInfo.applicationNamespace.getOrElse(""),
-        traceData = traceData
-      )),
-      request = Option(request),
-      responseOrError = value
-    )
+    val ap: Option[ExecutionMetadata] => ExecutionInformation = ExecutionInformation.apply(Option(request), _, responseOrError(value))
+    val metadata = value match {
+      case Left(_) =>
+        Option(ExecutionMetadata(
+          applicationId = eu.applicationId,
+          stageId = eu.stageId,
+          modelVersionId = -1,
+          signatureName = eu.signatureName,
+          applicationRequestId = eu.applicationRequestId.getOrElse(""),
+          requestId = eu.applicationRequestId.getOrElse(""), //todo fetch from response,
+          applicationNamespace = eu.applicationNamespace.getOrElse(""),
+          traceData = traceData
+        ))
+      case Right(v) =>
+        Option(ExecutionMetadata(
+          applicationId = eu.applicationId,
+          stageId = eu.stageId,
+          modelVersionId = v.modelVersionId.flatMap(x => Try(x.toLong).toOption).getOrElse(eu.modelVersionId),
+          signatureName = eu.signatureName,
+          applicationRequestId = eu.applicationRequestId.getOrElse(""),
+          requestId = eu.applicationRequestId.getOrElse(""), //todo fetch from response,
+          applicationNamespace = eu.applicationNamespace.getOrElse(""),
+          traceData = traceData
+        ))
+    }
+    ap(metadata)
   }
 
   def noop[F[_]](implicit F: Applicative[F]): Reporting[F] = (_, _, _) => F.pure(())
 }
-

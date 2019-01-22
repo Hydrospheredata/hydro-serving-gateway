@@ -66,7 +66,19 @@ class XDSActor[F[_]: Effect](
           Try(resource.unpack(ProtoApplication)).toOption
         }
         log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
-        val mapped = applications.map(StoredApplication.fromProto)
+        val parsed = applications
+          .map(app => app -> StoredApplication.fromProto(app))
+          .toMap
+        val mapped = parsed
+          .values
+          .flatMap(_.toOption)
+          .toSeq
+        val errors = parsed
+          .filter(_._2.isFailure)
+          .mapValues(_.failed.get)
+
+        errors.foreach(x => log.error(x._2, s"Error parsing application ${x._1.name}"))
+
         applicationStorage.update(mapped, value.versionInfo)
       } else {
         log.debug(s"Got $value message")

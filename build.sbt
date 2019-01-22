@@ -38,15 +38,15 @@ enablePlugins(sbtdocker.DockerPlugin)
 dockerfile in docker := {
   val jarFile: File = sbt.Keys.`package`.in(Compile, packageBin).value
   val classpath = (dependencyClasspath in Compile).value
-  val dockerFilesLocation=baseDirectory.value / "src/main/docker/"
+  val dockerFilesLocation = baseDirectory.value / "src/main/docker/"
   val jarTarget = s"/hydro-serving/app/app.jar"
 
   new Dockerfile {
     from("openjdk:8u151-jre-alpine")
 
-    env("APP_PORT","9090")
-    env("SIDECAR_PORT","8080")
-    env("SIDECAR_HOST","localhost")
+    env("APP_PORT", "9090")
+    env("SIDECAR_PORT", "8080")
+    env("SIDECAR_HOST", "localhost")
 
     label("DEPLOYMENT_TYPE", "APP")
 
@@ -63,7 +63,7 @@ dockerfile in docker := {
     add(jarFile, jarTarget)
 
     volume("/model")
-
+    run("dos2unix", "/hydro-serving/app/start.sh")
     cmd("/hydro-serving/app/start.sh")
   }
 }
