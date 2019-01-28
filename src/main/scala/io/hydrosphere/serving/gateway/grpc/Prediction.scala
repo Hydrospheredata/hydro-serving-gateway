@@ -15,10 +15,14 @@ import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.grpc
 import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
+import io.hydrosphere.serving.tensorflow.tensor.TensorProto
+import io.hydrosphere.serving.tensorflow.types.DataType
 
 import scala.concurrent.duration.Duration
+import scala.util.Try
 
 
 trait Prediction[F[_]] {
@@ -97,8 +101,21 @@ object Prediction {
         val reqBuilder = (setCallOptsF >>> setTracingF) (initReq)
         IO.fromFuture(IO(reqBuilder.predict(req)))
           .map { result =>
+            val latency = Try(Option(envoyUpstreamTime.get()).map(_.toLong))
+              .toOption
+              .flatten
+              .getOrElse(0)
+
+            val resultWithInternalInfo = result.addInternalInfo(
+              "system.latency" -> TensorProto(
+                dtype = DataType.DT_INT64,
+                int64Val = Seq(latency),
+                tensorShape = TensorShape.scalar.toProto
+              )
+            )
+
             PredictionWithMetadata(
-              response = result,
+              response = resultWithInternalInfo,
               modelVersionId = Option(modelVersionHeader.get()),
               latency = Option(envoyUpstreamTime.get())
             )
