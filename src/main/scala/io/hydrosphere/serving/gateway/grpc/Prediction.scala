@@ -104,7 +104,7 @@ object Prediction {
             val latency = Try(Option(envoyUpstreamTime.get()).map(_.toLong))
               .toOption
               .flatten
-              .getOrElse(0)
+              .getOrElse(0L)
 
             val resultWithInternalInfo = result.addInternalInfo(
               "system.latency" -> TensorProto(
