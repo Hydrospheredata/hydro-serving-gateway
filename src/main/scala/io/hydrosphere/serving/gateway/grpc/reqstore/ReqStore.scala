@@ -24,7 +24,7 @@ object ReqStore {
   def create[F[_], A](dest: Destination)(
     implicit
     F: Async[F],
-    tbs: ToByteSource[A]
+    tbs: ToByteString[A]
   ): F[ReqStore[F, A]] = {
     HttpClient.cachedPool(dest.host, dest.port, 200) map (create0(dest, _))
   }
@@ -32,16 +32,16 @@ object ReqStore {
   def create0[F[_], A](dest: Destination, client: HttpClient[F])(
     implicit
     F: MonadError[F, Throwable],
-    tbs: ToByteSource[A]
+    tbs: ToByteString[A]
   ): ReqStore[F, A] = {
     new ReqStore[F, A] {
       override def save(name: String, a: A): F[TraceData] = {
-        val byteSource = tbs.asByteSource(a)
+        val bs = tbs.to(a)
 
         val entity = HttpEntity.Default(
           ContentTypes.`application/octet-stream`,
-          byteSource.size,
-          byteSource.source
+          bs.size,
+          Source.single(bs)
         )
 
         val httpReq = HttpRequest(
