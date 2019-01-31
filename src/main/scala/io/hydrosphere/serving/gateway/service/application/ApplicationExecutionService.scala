@@ -107,8 +107,10 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   override def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
     for {
       app <- getApp(jsonServeRequest.targetId)
-      maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeRequest.signatureName)
-      signature <- Sync[F].fromOption(maybeSignature, NotFound(s"Can't find a signature ${jsonServeRequest.signatureName}"))
+      signature <- Sync[F].fromOption(
+        app.contract.signatures.headOption,
+        NotFound(s"Tried to access invalid application. Empty contract.")
+      )
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
       result <- serveApplication(app, request, tracingInfo)
@@ -118,8 +120,10 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
     for {
       app <- getApp(jsonServeByNameRequest.appName)
-      maybeSignature = app.contract.signatures.find(_.signatureName == jsonServeByNameRequest.signatureName)
-      signature <- Sync[F].fromOption(maybeSignature, NotFound(s"Can't find a signature ${jsonServeByNameRequest.signatureName}"))
+      signature <- Sync[F].fromOption(
+        app.contract.signatures.headOption,
+        NotFound(s"Tried to access invalid application. Empty contract.")
+      )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
       result <- serveApplication(app, request, tracingInfo)
@@ -168,16 +172,15 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     application.executionGraph.stages match {
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
-          case Some(servicePath) =>
-            val modelVersionId = stage.services.head.modelVersionId
-
-
+          case Some(modelSpec) =>
+            val service = stage.services.head
+            val modelVersionId = service.modelVersionId
             val unit = ExecutionUnit(
               serviceName = stage.id,
-              servicePath = servicePath.signatureName,
+              servicePath = modelSpec.signatureName,
               applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
               applicationId = application.id,
-              signatureName = servicePath.signatureName,
+              signatureName = modelSpec.signatureName,
               stageId = stage.id,
               applicationNamespace = application.namespace,
               modelVersionId = modelVersionId

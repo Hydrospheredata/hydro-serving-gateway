@@ -16,15 +16,14 @@ class JsonPredictionController[F[_]: Effect](
     optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
     optionalHeaderValueByName(TracingHeaders.xB3SpanId)
 
-  def compatibleServeById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, signatureName) =>
+  def compatibleServeById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, _) =>
     post {
       optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
         entity(as[JsObject]) { bytes =>
           complete {
-            logger.info(s"Serve request: id=$appId signature=$signatureName")
+            logger.info(s"Serve request: id=$appId")
             val request = JsonServeByIdRequest(
               targetId = appId,
-              signatureName = signatureName,
               inputs = bytes
             )
             val maybeTracingInfo = reqId.map(xRequestId =>
@@ -41,7 +40,7 @@ class JsonPredictionController[F[_]: Effect](
     }
   }
 
-  def listApps = pathPrefix("applications") {
+  def listApps = pathPrefix("application") {
     pathEndOrSingleSlash {
       get {
         complete(applicationExecutionService.listApps.toIO.unsafeToFuture())
@@ -49,15 +48,14 @@ class JsonPredictionController[F[_]: Effect](
     }
   }
 
-  def serveByName = pathPrefix("applications" / Segment / Segment) { (appName, signatureName) =>
+  def serveByName = pathPrefix("application" / Segment) { (appName) =>
     post {
       optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
         entity(as[JsObject]) { jsObject =>
           complete {
-            logger.info(s"Serve request: name=$appName signature=$signatureName")
+            logger.info(s"Serve request: name=$appName")
             val request = JsonServeByNameRequest(
               appName = appName,
-              signatureName = signatureName,
               inputs = jsObject
             )
             val maybeTracingInfo = reqId.map(xRequestId =>
