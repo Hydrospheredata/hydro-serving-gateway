@@ -173,14 +173,15 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
           case Some(modelSpec) =>
-            val service = stage.services.head
+            val service = stage.services.headOption.getOrElse(throw new IllegalArgumentException(s"Can't get service from application ${application.name}"))
             val modelVersionId = service.modelVersionId
+            val signature = stage.signature.getOrElse(throw new IllegalArgumentException(s"Can't get contract from application ${application.name}"))
             val unit = ExecutionUnit(
               serviceName = stage.id,
-              servicePath = modelSpec.signatureName,
+              servicePath = signature.signatureName,
               applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
               applicationId = application.id,
-              signatureName = modelSpec.signatureName,
+              signatureName = signature.signatureName,
               stageId = stage.id,
               applicationNamespace = application.namespace,
               modelVersionId = modelVersionId
