@@ -11,7 +11,7 @@ def buildAndPublishReleaseFunction={
 def buildFunction={
     //Buid serving
     def curVersion = getVersion()
-    sh "sbt -DappVersion=${curVersion} compile docker"
+    sh "sbt -DappVersion=${curVersion} test docker"
 }
 
 def collectTestResults = {

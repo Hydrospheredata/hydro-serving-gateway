@@ -1,7 +1,10 @@
 package io.hydrosphere.serving.gateway.service
 
+import cats.effect.IO
+import cats.implicits._
 import com.google.protobuf.ByteString
 import io.hydrosphere.serving.gateway.GenericTest
+import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.tensor.{TensorProto, Uint8Tensor}
@@ -11,8 +14,8 @@ class ApplicationExecutionServiceSpec extends GenericTest {
 
   describe("ApplicationExecutionService") {
     it("should skip verifications for tensors with non-empty tensorContent field") {
-      val applicationExecutionService = new ApplicationExecutionServiceImpl(
-        null, null, null, null, null
+      val applicationExecutionService = new ApplicationExecutionServiceImpl[IO](
+        null, null, null
       )
       val ignoreMe = TensorProto(
         dtype = DT_INT16,

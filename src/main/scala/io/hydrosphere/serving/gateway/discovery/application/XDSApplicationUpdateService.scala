@@ -1,44 +1,41 @@
-package io.hydrosphere.serving.gateway.service
+package io.hydrosphere.serving.gateway.discovery.application
 
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Cancellable, Props}
+import cats.effect.syntax.effect._
+import cats.syntax.functor._
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import cats.effect.Effect
 import envoy.api.v2.core.Node
 import envoy.api.v2.{DiscoveryRequest, DiscoveryResponse}
 import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc
-import envoy.service.discovery.v2.AggregatedDiscoveryServiceGrpc.AggregatedDiscoveryService
-import io.grpc.internal.GrpcUtil
-import io.grpc.netty.NettyChannelBuilder
-import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.gateway.config.Inject.appConfig
+import io.grpc.{ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.config.SidecarConfig
-import io.hydrosphere.serving.gateway.service.XDSActor.{GetUpdates, Tick}
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.gateway.discovery.application.XDSActor.{GetUpdates, Tick}
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
 import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration._
 import scala.util.Try
 
-class XDSApplicationUpdateService(
-  applicationStorage: ApplicationStorage,
+class XDSApplicationUpdateService[F[_]: Effect](
+  applicationStorage: ApplicationStorage[F],
   sidecarConfig: SidecarConfig
 )(implicit actorSystem: ActorSystem) extends Logging {
 
   val actor = actorSystem.actorOf(XDSActor.props(sidecarConfig, applicationStorage))
-
-  val typeUrl = "type.googleapis.com/io.hydrosphere.serving.manager.grpc.applications.Application"
 
   def getUpdates(): Unit = {
     actor ! GetUpdates
   }
 }
 
-class XDSActor(
+class XDSActor[F[_]: Effect](
   sidecarConfig: SidecarConfig,
-  applicationStorage: ApplicationStorage
+  applicationStorage: ApplicationStorage[F]
 ) extends Actor with ActorLogging {
 
   import context._
@@ -69,7 +66,20 @@ class XDSActor(
           Try(resource.unpack(ProtoApplication)).toOption
         }
         log.info(s"Discovered applications:\n${prettyPrintApps(applications)}")
-        applicationStorage.update(applications, value.versionInfo)
+        val parsed = applications
+          .map(app => app -> StoredApplication.fromProto(app))
+          .toMap
+        val mapped = parsed
+          .values
+          .flatMap(_.toOption)
+          .toSeq
+        val errors = parsed
+          .filter(_._2.isFailure)
+          .mapValues(_.failed.get)
+
+        errors.foreach(x => log.error(x._2, s"Error parsing application ${x._1.name}"))
+
+        applicationStorage.update(mapped, value.versionInfo)
       } else {
         log.debug(s"Got $value message")
       }
@@ -83,14 +93,14 @@ class XDSActor(
       log.debug(s"Connecting to stream")
       try {
         val builder = ManagedChannelBuilder
-          .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
+          .forAddress(sidecarConfig.host, sidecarConfig.port)
         builder.enableRetry()
         builder.usePlaintext()
 
         val sidecarChannel = ClientInterceptors
           .intercept(builder.build, new AuthorityReplacerInterceptor)
 
-        log.debug(s"Created a channel: $sidecarChannel")
+        log.debug(s"Created a channel: ${sidecarChannel.authority()}")
 
         val xDSClient = AggregatedDiscoveryServiceGrpc.stub(sidecarChannel)
         val result = xDSClient.streamAggregatedResources(observer)
@@ -113,16 +123,19 @@ class XDSActor(
   }
 
   def update(response: StreamObserver[DiscoveryRequest]) = {
-    val prevVersion = applicationStorage.version
-
-    log.debug(s"Requesting state update. Current version: $prevVersion")
-
-    val request = DiscoveryRequest(
-      versionInfo = prevVersion,
-      node = Some(Node()),
-      typeUrl = typeUrl
-    )
-    response.onNext(request)
+    val f = for {
+      version <- applicationStorage.version
+    } yield {
+      log.debug(s"Requesting state update. Current version: $version")
+      val request = DiscoveryRequest(
+        versionInfo = version,
+        node = Some(Node()),
+        typeUrl = typeUrl
+      )
+      response.onNext(request)
+      request
+    }
+    f.toIO.unsafeToFuture()
   }
 
   override def preStart() = {
@@ -155,8 +168,8 @@ object XDSActor {
 
   case object GetUpdates
 
-  def props(
+  def props[F[_]: Effect](
     sidecarConfig: SidecarConfig,
-    applicationStorage: ApplicationStorage
-  ) = Props(classOf[XDSActor], sidecarConfig, applicationStorage)
+    applicationStorage: ApplicationStorage[F]
+  ) = Props(new XDSActor[F](sidecarConfig, applicationStorage))
 }
