@@ -1,5 +1,7 @@
 package io.hydrosphere.serving.gateway.grpc.reqstore
 
+import java.nio.ByteBuffer
+
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
@@ -21,6 +23,13 @@ trait ToByteSource[A] {
 }
 
 object ToByteSource {
+  
+  private def intByteSource(v: Int): ByteSource = {
+    val bb = ByteBuffer.allocate(4)
+    bb.putInt(v)
+    bb.flip()
+    ByteSource(4, Source.single(ByteString(bb)))
+  }
 
   private val pbMessageTbs: ToByteSource[scalapb.GeneratedMessage] =
     new ToByteSource[scalapb.GeneratedMessage] {
@@ -40,7 +49,7 @@ object ToByteSource {
   implicit val forResponseOrError: ToByteSource[ResponseOrError] = {
     new ToByteSource[ResponseOrError] {
       def asByteSource(a: ResponseOrError): ByteSource = {
-        val head = ByteSource(1, Source.single(ByteString(a.number)))
+        val head = intByteSource(a.number)
         val enc = a match {
           case ResponseOrError.Empty => None
           case ResponseOrError.Response(r) => Some(pbMessageTbs.asByteSource(r))
@@ -57,7 +66,7 @@ object ToByteSource {
       def asByteSource(x: (A, B)): ByteSource = {
         val aBs = aTbs.asByteSource(x._1)
         val bBs = bTbs.asByteSource(x._2)
-        val head = ByteSource(2, Source.single(ByteString(aBs.size, bBs.size)))
+        val head = intByteSource(aBs.size) ++ intByteSource(bBs.size)
         head ++ aBs ++ bBs
       }
     }
