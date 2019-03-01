@@ -46,7 +46,7 @@ object ReqStore {
 
         val httpReq = HttpRequest(
           HttpMethods.POST,
-          Uri("/test/put"),
+          Uri(s"/$name/put"),
           entity = entity,
           headers = dest.additionalHeaders
         )
