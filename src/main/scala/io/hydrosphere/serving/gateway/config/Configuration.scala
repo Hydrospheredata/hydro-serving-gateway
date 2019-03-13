@@ -4,7 +4,7 @@ import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
 
-final case class SidecarConfig(
+final case class ManagerConfig(
   host: String,
   port: Int,
   xdsSilentRestartSeconds: Long
@@ -20,23 +20,16 @@ final case class HttpConfig(
   port: Int
 )
 
-sealed trait HttpServiceAddr
-object HttpServiceAddr {
-  final case class EnvoyRoute(name: String) extends HttpServiceAddr
-  final case class RealAddress(
-    host: String,
-    port: Int,
-    schema: String
-  ) extends HttpServiceAddr
-}
-
 final case class ReqStoreConfig(
   enabled: Boolean,
-  address: HttpServiceAddr
+  host: String,
+  port: Int,
+  schema: String
 )
 
 final case class ApplicationConfig(
   grpc: GrpcConfig,
+  manager: ManagerConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
   profilingDestination: String,
@@ -46,7 +39,6 @@ final case class ApplicationConfig(
 
 final case class Configuration(
   application: ApplicationConfig,
-  sidecar: SidecarConfig,
 )
 
 

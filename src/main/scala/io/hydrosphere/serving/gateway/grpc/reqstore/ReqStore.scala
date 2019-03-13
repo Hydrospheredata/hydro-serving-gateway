@@ -9,6 +9,7 @@ import cats.effect.Async
 import cats.syntax.either._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
+import io.hydrosphere.serving.gateway.config.ReqStoreConfig
 import io.hydrosphere.serving.monitoring.monitoring.TraceData
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
@@ -21,15 +22,15 @@ object ReqStore {
   import spray.json._
   import jsonCodecs._
 
-  def create[F[_], A](dest: Destination)(
+  def create[F[_], A](cfg: ReqStoreConfig)(
     implicit
     F: Async[F],
     tbs: ToByteSource[A]
   ): F[ReqStore[F, A]] = {
-    HttpClient.cachedPool(dest.host, dest.port, 200) map (create0(dest, _))
+    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(cfg, _))
   }
 
-  def create0[F[_], A](dest: Destination, client: HttpClient[F])(
+  def create0[F[_], A](client: HttpClient[F])(
     implicit
     F: MonadError[F, Throwable],
     tbs: ToByteSource[A]
@@ -48,7 +49,6 @@ object ReqStore {
           HttpMethods.POST,
           Uri(s"/$name/put"),
           entity = entity,
-          headers = dest.additionalHeaders
         )
 
         client.send(httpReq).flatMap(rsp => {

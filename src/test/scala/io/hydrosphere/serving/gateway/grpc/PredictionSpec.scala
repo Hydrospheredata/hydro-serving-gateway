@@ -6,7 +6,7 @@ import cats.implicits._
 import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
-import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
+import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
@@ -14,7 +14,7 @@ import org.scalatest.{FunSpec, Matchers}
 
 class PredictionSpec extends FunSpec with Matchers {
 
-  val executionUnit = ExecutionUnit(
+  val executionUnit = ExecutionMeta(
     "a",
     "path",
     applicationRequestId = Some("reqId"),
@@ -35,7 +35,7 @@ class PredictionSpec extends FunSpec with Matchers {
       new Reporting[IO] {
         def report(
           req: PredictRequest,
-          eu: ExecutionUnit,
+          eu: ExecutionMeta,
           value: PredictionWithMetadata.PredictionOrException): IO[Unit] = ref.update(acc => value :: acc)
       }
     }

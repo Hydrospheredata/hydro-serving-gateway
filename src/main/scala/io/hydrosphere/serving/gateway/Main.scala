@@ -28,21 +28,14 @@ object Main extends App with Logging {
     implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.Implicits.global
 
     logger.debug(s"Setting up GRPC sidecar channel")
-    val builder = ManagedChannelBuilder
-      .forAddress(appConfig.sidecar.host, appConfig.sidecar.port)
-    builder.enableRetry()
-    builder.usePlaintext()
-
-    val sidecarChannel: Channel = ClientInterceptors
-      .intercept(builder.build, new AuthorityReplacerInterceptor +: Headers.interceptors: _*)
 
     logger.debug(s"Initializing application storage")
     val applicationStorage = new ApplicationInMemoryStorage[IO]()
 
     logger.debug(s"Initializing application update service")
-    val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.sidecar)
+    val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.application.manager)
 
-    val grpcAlg = Prediction.envoyBased[IO](sidecarChannel, appConfig).unsafeRunSync()
+    val grpcAlg = Prediction.create(appConfig).unsafeRunSync()
 
     logger.debug("Initializing app execution service")
     val gatewayPredictionService = new ApplicationExecutionServiceImpl(

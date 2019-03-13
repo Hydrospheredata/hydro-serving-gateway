@@ -14,7 +14,7 @@ import io.grpc.Channel
 import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
 import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
-import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
+import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
 import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
@@ -46,7 +46,6 @@ object Reporters {
   object Monitoring {
 
     def envoyBased[F[_]: Functor: LiftIO](
-      channel: Channel,
       destination: String,
       deadline: Duration
     ): Reporter[F] = {
@@ -73,14 +72,14 @@ object Reporters {
 
 
 trait Reporting[F[_]] {
-  def report(request: PredictRequest, eu: ExecutionUnit, value: PredictionOrException): F[Unit]
+  def report(request: PredictRequest, eu: ExecutionMeta, value: PredictionOrException): F[Unit]
 }
 
 object Reporting {
 
-  type MKInfo[F[_]] = (PredictRequest, ExecutionUnit, PredictionOrException) => F[ExecutionInformation]
+  type MKInfo[F[_]] = (PredictRequest, ExecutionMeta, PredictionOrException) => F[ExecutionInformation]
 
-  def default[F[_]](channel: Channel, conf: Configuration)(
+  def default[F[_]](conf: Configuration)(
     implicit F: Concurrent[F], cs: ContextShift[F]
   ): F[Reporting[F]] = {
 
@@ -101,7 +100,7 @@ object Reporting {
     new Reporting[F] {
       def report(
         request: PredictRequest,
-        eu: ExecutionUnit,
+        eu: ExecutionMeta,
         value: PredictionOrException
       ): F[Unit] = {
         cs.evalOn(ec) {
@@ -118,14 +117,14 @@ object Reporting {
       val destination = Destination.fromHttpServiceAddr(conf.application.reqstore.address, conf.sidecar)
       ReqStore.create[F, (PredictRequest, ResponseOrError)](destination)
         .map(s => {
-          (req: PredictRequest, eu: ExecutionUnit, resp: PredictionOrException) => {
+          (req: PredictRequest, eu: ExecutionMeta, resp: PredictionOrException) => {
             s.save(eu.serviceName, (req, responseOrError(resp)))
               .attempt
               .map(d => mkExecutionInformation(req, eu, resp, d.toOption))
           }
         })
     } else {
-      val f = (req: PredictRequest, eu: ExecutionUnit, value: PredictionOrException) =>
+      val f = (req: PredictRequest, eu: ExecutionMeta, value: PredictionOrException) =>
         mkExecutionInformation(req, eu, value, None).pure
       f.pure
     }
@@ -141,7 +140,7 @@ object Reporting {
 
   private def mkExecutionInformation(
     request: PredictRequest,
-    eu: ExecutionUnit,
+    eu: ExecutionMeta,
     value: PredictionOrException,
     traceData: Option[TraceData]
   ): ExecutionInformation = {

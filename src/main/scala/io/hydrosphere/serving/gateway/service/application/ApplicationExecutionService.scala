@@ -13,12 +13,14 @@ import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.model.api.{Result, TensorUtil}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
+import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionServiceStub
 import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
 import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
 
 import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
+
 
 trait ApplicationExecutionService[F[_]] {
   def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
@@ -31,6 +33,11 @@ trait ApplicationExecutionService[F[_]] {
 }
 
 case class ExecutionUnit(
+  client: PredictionServiceStub,
+  meta: ExecutionMeta
+)
+
+case class ExecutionMeta(
   serviceName: String,
   servicePath: String,
   modelVersionId: Long,
@@ -53,14 +60,14 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
 
   def getApp(name: String): F[StoredApplication] = {
     for {
-      maybeApp <- applicationStorage.get(name)
+      maybeApp <- applicationStorage.getByName(name)
       app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with name $name"))
     } yield app
   }
 
   def getApp(id: Long): F[StoredApplication] = {
     for {
-      maybeApp <- applicationStorage.get(id)
+      maybeApp <- applicationStorage.getById(id.toString)
       app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with id $id"))
     } yield app
   }
@@ -160,63 +167,30 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       case (previous, current) =>
         previous.flatMap { res =>
           val request = PredictRequest(
-            modelSpec = ModelSpec(signatureName = current.servicePath).some,
+            modelSpec = ModelSpec(signatureName = current.meta.servicePath).some,
             inputs = res.outputs
           )
           prediction.predict(current, request, tracingInfo).map(_.response)
         }
     }
   }
-
+  
   def serveApplication(application: StoredApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
-    application.executionGraph.stages match {
-      case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
-        request.modelSpec match {
-          case Some(modelSpec) =>
-            val service = stage.services.headOption.getOrElse(throw new IllegalArgumentException(s"Can't get service from application ${application.name}"))
-            val modelVersionId = service.modelVersionId
-            val signature = stage.signature.getOrElse(throw new IllegalArgumentException(s"Can't get contract from application ${application.name}"))
-            val unit = ExecutionUnit(
-              serviceName = stage.id,
-              servicePath = signature.signatureName,
-              applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
-              applicationId = application.id,
-              signatureName = signature.signatureName,
-              stageId = stage.id,
-              applicationNamespace = application.namespace,
-              modelVersionId = modelVersionId
-            )
-            servePipeline(Seq(unit), request, tracingInfo)
-          case None => Sync[F].raiseError(InvalidArgument("ModelSpec in request is not specified"))
-        }
-      case stages => // pipeline
-        val execUnits = stages.zipWithIndex.map {
-          case (stage, idx) =>
-            stage.signature match {
-              case Some(signature) =>
-                val vers = stage.services.head.modelVersionId
-                Applicative[F].pure(
-                  ExecutionUnit(
-                    serviceName = stage.id,
-                    servicePath = signature.signatureName,
-                    modelVersionId = vers, // this is a safety id in case envoy doesn't return correct header
-                    applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
-                    applicationId = application.id,
-                    signatureName = signature.signatureName,
-                    stageId = stage.id,
-                    applicationNamespace = application.namespace
-                  )
-                )
-              case None =>
-                Sync[F].raiseError[ExecutionUnit](NotFound(s"$stage doesn't have a signature"))
-            }
-        }
-
-        for {
-          units <- Traverse[List].sequence(execUnits.toList)
-          res <- servePipeline(units, request, tracingInfo)
-        } yield res
-    }
+    val units = application.stages.map(stage => {
+      val meta = ExecutionMeta(
+        serviceName = stage.id,
+        servicePath = stage.signature.signatureName,
+        applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
+        applicationId = application.id.toLong, // TODO
+        signatureName = stage.signature.signatureName,
+        stageId = stage.id,
+        applicationNamespace = application.namespace,
+        modelVersionId = 1L // TODO
+      )
+      val client = stage.services.head.client
+      ExecutionUnit(client, meta)
+    })
+    servePipeline(units, request, tracingInfo)
   }
 
   private def responseToJsObject(rr: PredictResponse): JsObject = {

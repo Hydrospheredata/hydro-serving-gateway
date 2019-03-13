@@ -8,20 +8,9 @@ import cats.syntax.applicative._
 import scala.collection.mutable
 
 class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F] {
-  private[this] val applicationsById = mutable.Map[Long, StoredApplication]()
+  private[this] val applicationsById = mutable.Map[String, StoredApplication]()
   private[this] val applicationsByName = mutable.Map[String, StoredApplication]()
   private[this] val rwLock = new ReentrantReadWriteLock()
-  private[this] var currentVersion = "0"
-
-  def version: F[String] = {
-    val lock = rwLock.readLock()
-    try {
-      lock.lock()
-       currentVersion.pure
-    } finally {
-      lock.unlock()
-    }
-  }
 
   def listAll: F[Seq[StoredApplication]] = {
     val lock = rwLock.readLock()
@@ -33,7 +22,7 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     }
   }
 
-  def get(name: String): F[Option[StoredApplication]] = {
+  def getByName(name: String): F[Option[StoredApplication]] = {
     val lock = rwLock.readLock()
     try {
       lock.lock()
@@ -43,7 +32,7 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     }
   }
 
-  def get(id: Long): F[Option[StoredApplication]] = {
+  def getById(id: String): F[Option[StoredApplication]] = {
     val lock = rwLock.readLock()
     try {
       lock.lock()
@@ -53,17 +42,15 @@ class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F
     }
   }
 
-  def update(apps: Seq[StoredApplication], version: String): F[String] = {
+  def update(apps: Seq[StoredApplication]): F[Unit] = {
     val lock = rwLock.writeLock()
     try {
       lock.lock()
       updateStorageInNames(apps)
-      updateStorageInIds(apps)
-      currentVersion = version
+      updateStorageInIds(apps).pure
     } finally {
       lock.unlock()
     }
-    version.pure
   }
 
   private def updateStorageInIds(apps: Seq[StoredApplication]): Unit = {
