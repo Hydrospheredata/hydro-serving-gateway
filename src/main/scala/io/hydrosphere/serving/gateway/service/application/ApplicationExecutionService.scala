@@ -1,16 +1,16 @@
 package io.hydrosphere.serving.gateway.service.application
 
+import cats.{Applicative, Traverse}
 import cats.effect.Sync
 import cats.implicits._
-import cats.{Applicative, Traverse}
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
+import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.model.api.TensorUtil
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
-import io.hydrosphere.serving.model.api.{Result, TensorUtil}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
@@ -54,14 +54,14 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   def getApp(name: String): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.get(name)
-      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with name $name"))
+      app <- Sync[F].fromOption(maybeApp, GatewayError.NotFound(s"Can't find an app with name $name"))
     } yield app
   }
 
   def getApp(id: Long): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.get(id)
-      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with id $id"))
+      app <- Sync[F].fromOption(maybeApp, GatewayError.NotFound(s"Can't find an app with id $id"))
     } yield app
   }
 
@@ -76,17 +76,16 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
           result <- serveApplication(app, data, tracingInfo)
         } yield result
       case None =>
-        Sync[F].raiseError(InvalidArgument("ModelSpec is not defined"))
+        Sync[F].raiseError(GatewayError.InvalidArgument("ModelSpec is not defined"))
     }
   }
 
   def jsonToRequest(appName: String, inputs: JsObject, signanture: ModelSignature): Try[PredictRequest] = {
-
     try {
       val c = new SignatureBuilder(signanture).convert(inputs)
       c match {
         case Left(value) =>
-          Failure(InvalidArgument(value.message))
+          Failure(GatewayError.InvalidArgument(s"Validation error: $value"))
         case Right(tensors) =>
           Success(PredictRequest(
             modelSpec = Some(
@@ -100,7 +99,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
           ))
       }
     } catch {
-      case x: Throwable => Failure(InvalidArgument(x.getMessage))
+      case x: Throwable => Failure(GatewayError.InvalidArgument(x.getMessage))
     }
   }
 
@@ -108,8 +107,8 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     for {
       app <- getApp(jsonServeRequest.targetId)
       signature <- Sync[F].fromOption(
-        app.contract.signatures.headOption,
-        NotFound(s"Tried to access invalid application. Empty contract.")
+        app.contract.predict,
+        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
       )
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
@@ -121,8 +120,8 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     for {
       app <- getApp(jsonServeByNameRequest.appName)
       signature <- Sync[F].fromOption(
-        app.contract.signatures.headOption,
-        NotFound(s"Tried to access invalid application. Empty contract.")
+        app.contract.predict,
+        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
       )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
@@ -130,13 +129,16 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     } yield responseToJsObject(result)
   }
 
-  def verify(request: PredictRequest): Either[Map[String, Result.HError], PredictRequest] = {
+  def verify(request: PredictRequest): Either[Map[String, GatewayError], PredictRequest] = {
     val verificationResults = request.inputs.map {
       case (name, tensor) =>
         val verifiedTensor = if (!tensor.tensorContent.isEmpty) { // tensorContent - byte field, thus skip verifications
           Right(tensor)
         } else {
-          TensorUtil.verifyShape(tensor)
+          Either.fromOption(
+            TensorUtil.verifyShape(tensor),
+            GatewayError.InvalidTensorShape(s"$name tensor has invalid shape").asInstanceOf[GatewayError]
+          )
         }
         name -> verifiedTensor
     }
@@ -172,7 +174,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     application.executionGraph.stages match {
       case stage :: Nil if stage.services.lengthCompare(1) == 0 => // single stage with single service
         request.modelSpec match {
-          case Some(modelSpec) =>
+          case Some(_) =>
             val service = stage.services.headOption.getOrElse(throw new IllegalArgumentException(s"Can't get service from application ${application.name}"))
             val modelVersionId = service.modelVersionId
             val signature = stage.signature.getOrElse(throw new IllegalArgumentException(s"Can't get contract from application ${application.name}"))
@@ -187,7 +189,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
               modelVersionId = modelVersionId
             )
             servePipeline(Seq(unit), request, tracingInfo)
-          case None => Sync[F].raiseError(InvalidArgument("ModelSpec in request is not specified"))
+          case None => Sync[F].raiseError(GatewayError.InvalidArgument("ModelSpec in request is not specified"))
         }
       case stages => // pipeline
         val execUnits = stages.zipWithIndex.map {
@@ -208,10 +210,9 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
                   )
                 )
               case None =>
-                Sync[F].raiseError[ExecutionUnit](NotFound(s"$stage doesn't have a signature"))
+                Sync[F].raiseError[ExecutionUnit](GatewayError.NotFound(s"$stage doesn't have a signature"))
             }
         }
-
         for {
           units <- Traverse[List].sequence(execUnits.toList)
           res <- servePipeline(units, request, tracingInfo)
