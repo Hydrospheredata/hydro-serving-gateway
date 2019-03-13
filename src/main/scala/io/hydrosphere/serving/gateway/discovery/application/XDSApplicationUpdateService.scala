@@ -38,7 +38,7 @@ class XDSActor[F[_]: Effect](
 
   val observer = new StreamObserver[WatchResp] {
     override def onError(t: Throwable): Unit = {
-      log.error("Application stream exception: {}", t.getMessage)
+      log.error(t, "Application stream exception")
       context become connecting
     }
 
@@ -48,7 +48,7 @@ class XDSActor[F[_]: Effect](
     }
 
     override def onNext(resp: WatchResp): Unit = {
-      log.debug(s"Discovery stream update: $resp")
+      log.info(s"Discovery stream update: $resp")
 
       lastResponse = Instant.now()
       val converted = resp.added.map(StoredApplication.fromProto)
@@ -78,8 +78,8 @@ class XDSActor[F[_]: Effect](
       try {
         val builder = ManagedChannelBuilder
           .forAddress(sidecarConfig.host, sidecarConfig.port)
-        builder.enableRetry()
-        builder.usePlaintext()
+          .enableRetry()
+          .usePlaintext()
 
         val manager = builder.build()
 

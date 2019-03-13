@@ -57,8 +57,12 @@ object StoredApplication {
   
   private def stageFromProto(stage: Stage): Either[String, StoredStage] = {
     def toService(servable: Servable): StoredService = {
-      val builder = ManagedChannelBuilder.forAddress(servable.host, servable.port)
+      val builder = ManagedChannelBuilder
+        .forAddress(servable.host, servable.port)
+        
+      builder.usePlaintext()
       builder.enableRetry()
+      
   
       val chanell = builder.build()
       val stub = PredictionServiceGrpc.stub(chanell)
