@@ -35,7 +35,7 @@ object Main extends App with Logging {
     logger.debug(s"Initializing application update service")
     val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.application.manager)
 
-    val grpcAlg = Prediction.create(appConfig).unsafeRunSync()
+    val grpcAlg = Prediction.create[IO](appConfig).unsafeRunSync()
 
     logger.debug("Initializing app execution service")
     val gatewayPredictionService = new ApplicationExecutionServiceImpl(

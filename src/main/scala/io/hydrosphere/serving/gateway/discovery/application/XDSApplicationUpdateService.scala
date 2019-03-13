@@ -2,22 +2,17 @@ package io.hydrosphere.serving.gateway.discovery.application
 
 import java.time.Instant
 
-import cats.effect.syntax.effect._
-import cats.syntax.functor._
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import cats.effect.Effect
+import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.grpc.{ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchReq, WatchResp}
-import io.hydrosphere.serving.gateway.config.{ManagerConfig, SidecarConfig}
+import io.hydrosphere.serving.gateway.config.ManagerConfig
 import io.hydrosphere.serving.gateway.discovery.application.XDSActor.{GetUpdates, Tick}
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
-import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
-//import io.hydrosphere.serving.manager.grpc.applications.{ExecutionGraph, Application => ProtoApplication}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration._
-import scala.util.Try
 
 class XDSApplicationUpdateService[F[_]: Effect](
   applicationStorage: ApplicationStorage[F],
@@ -56,8 +51,16 @@ class XDSActor[F[_]: Effect](
       log.debug(s"Discovery stream update: $resp")
 
       lastResponse = Instant.now()
-      val added = resp.added.map(StoredApplication.fromProto)
-      applicationStorage.update(added)
+      val converted = resp.added.map(StoredApplication.fromProto)
+      val (valid, invalid) =
+        converted.foldLeft((List.empty[StoredApplication], List.empty[String]))({
+          case ((valid, invalid), Left(e)) => (valid, e :: invalid)
+          case ((valid, invalid), Right(v)) => (v :: valid, invalid)
+        })
+      invalid.foreach(msg => {
+        log.error(s"Received invalid application. $msg")
+      })
+      applicationStorage.update(valid)
     }
   }
 

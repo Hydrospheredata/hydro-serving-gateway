@@ -43,7 +43,7 @@ object Prediction {
   def create[F[_]](conf: Configuration)(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
     val predictF = overGrpc(conf.application.grpc.deadline)
     val mkReporting = if (conf.application.shadowingOn) {
-      Reporting.default[F](channel, conf)
+      Reporting.default[F](conf)
     } else {
       F.pure(Reporting.noop[F])
     }

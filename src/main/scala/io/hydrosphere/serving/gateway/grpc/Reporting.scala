@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import java.util.concurrent.{Executor, ExecutorService, Executors}
+import java.util.concurrent.Executors
 
 import cats.data.NonEmptyList
 import cats.effect._
@@ -9,20 +9,18 @@ import cats.syntax.applicative._
 import cats.syntax.applicativeError._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
-import cats.{Applicative, Functor, Monad}
-import io.grpc.Channel
-import io.hydrosphere.serving.gateway.config.Configuration
+import cats.{Applicative, Functor}
+import io.grpc.ManagedChannelBuilder
+import io.hydrosphere.serving.gateway.config.{Configuration, MonitoringConfig}
 import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
-import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
+import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
-import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
 import io.hydrosphere.serving.monitoring.monitoring._
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
 trait Reporter[F[_]] {
@@ -44,28 +42,17 @@ object Reporter {
 object Reporters {
 
   object Monitoring {
-
-    def envoyBased[F[_]: Functor: LiftIO](
-      destination: String,
-      deadline: Duration
-    ): Reporter[F] = {
+  
+    def default[F[_] : Functor : LiftIO](cfg: MonitoringConfig, deadline: Duration): Reporter[F] = {
+      val builder = ManagedChannelBuilder.forAddress(cfg.host, cfg.port)
+      builder.enableRetry()
+      val channel = builder.build()
       val stub = MonitoringServiceGrpc.stub(channel)
-      monitoringGrpc(deadline, destination, stub)
+    
+      Reporter.fromFuture(info =>
+        stub.withDeadlineAfter(deadline.length, deadline.unit).analyze(info)
+      )
     }
-
-    def monitoringGrpc[F[_] : Functor : LiftIO](
-      deadline: Duration,
-      destination: String,
-      grpcClient: MonitoringServiceStub
-    ): Reporter[F] = {
-      Reporter.fromFuture(info => {
-        grpcClient
-          .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, destination)
-          .withDeadlineAfter(deadline.length, deadline.unit)
-          .analyze(info)
-      })
-    }
-
   }
 
 }
@@ -85,7 +72,8 @@ object Reporting {
 
     val appConf = conf.application
     val deadline = appConf.grpc.deadline
-    val monitoring = Reporters.Monitoring.envoyBased(channel, appConf.monitoringDestination, deadline)
+    
+    val monitoring = Reporters.Monitoring.default(appConf.monitoring, deadline)
 
     val es = Executors.newCachedThreadPool()
     val ec = ExecutionContext.fromExecutorService(es)
@@ -114,8 +102,7 @@ object Reporting {
 
   private def prepareMkInfo[F[_]](conf: Configuration)(implicit F: Async[F]): F[MKInfo[F]] = {
     if (conf.application.reqstore.enabled) {
-      val destination = Destination.fromHttpServiceAddr(conf.application.reqstore.address, conf.sidecar)
-      ReqStore.create[F, (PredictRequest, ResponseOrError)](destination)
+      ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore)
         .map(s => {
           (req: PredictRequest, eu: ExecutionMeta, resp: PredictionOrException) => {
             s.save(eu.serviceName, (req, responseOrError(resp)))

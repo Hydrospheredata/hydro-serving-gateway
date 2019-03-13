@@ -27,7 +27,7 @@ object ReqStore {
     F: Async[F],
     tbs: ToByteSource[A]
   ): F[ReqStore[F, A]] = {
-    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(cfg, _))
+    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(_))
   }
 
   def create0[F[_], A](client: HttpClient[F])(

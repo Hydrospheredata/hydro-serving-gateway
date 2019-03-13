@@ -40,7 +40,7 @@ case class StoredApplication(
 object StoredApplication {
   
   def fromProto(app: ServingApp): Either[String, StoredApplication] = {
-    for {
+    val out = for {
       contract <- app.contract.toValid("Contract field is required").toEither
       stages   <- app.pipeline.toList.traverse(stageFromProto)
     } yield {
@@ -52,6 +52,7 @@ object StoredApplication {
         stages = stages
       )
     }
+    out.leftMap(s => s"Converting app: ${app.id}, ${app.name} failed. $s")
   }
   
   private def stageFromProto(stage: Stage): Either[String, StoredStage] = {

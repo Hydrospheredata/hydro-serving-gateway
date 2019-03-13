@@ -10,6 +10,11 @@ final case class ManagerConfig(
   xdsSilentRestartSeconds: Long
 )
 
+final case class MonitoringConfig(
+  host: String,
+  port: Int
+)
+
 final case class GrpcConfig(
   port: Int,
   deadline: Duration,
@@ -32,8 +37,7 @@ final case class ApplicationConfig(
   manager: ManagerConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
-  profilingDestination: String,
-  monitoringDestination: String,
+  monitoring: MonitoringConfig,
   reqstore: ReqStoreConfig
 )
 

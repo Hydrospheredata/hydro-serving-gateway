@@ -65,7 +65,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
 
   }
   
-  implicit val gwAppFormat = new JsonWriter[StoredApplication] {
+  implicit val gwAppFormat = new RootJsonFormat[StoredApplication] {
     override def write(obj: StoredApplication): JsValue = {
       JsObject(
         "id" -> JsNumber(obj.id),
@@ -73,6 +73,8 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
         "stages" -> obj.stages.toJson
       )
     }
+  
+    override def read(json: JsValue): StoredApplication = ???
   }
 }
 
