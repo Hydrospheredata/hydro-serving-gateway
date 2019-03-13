@@ -57,10 +57,16 @@ class XDSActor[F[_]: Effect](
           case ((valid, invalid), Left(e)) => (valid, e :: invalid)
           case ((valid, invalid), Right(v)) => (v :: valid, invalid)
         })
+      
       invalid.foreach(msg => {
         log.error(s"Received invalid application. $msg")
       })
-      applicationStorage.update(valid)
+      
+      valid.foreach(app => {
+        log.error(s"Received application: $app")
+      })
+      applicationStorage.addApps(valid)
+      applicationStorage.removeApps(resp.removedIds)
     }
   }
 

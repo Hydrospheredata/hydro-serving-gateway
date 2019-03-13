@@ -52,7 +52,7 @@ object StoredApplication {
         stages = stages
       )
     }
-    out.leftMap(s => s"Converting app: ${app.id}, ${app.name} failed. $s")
+    out.leftMap(s => s"Invalid app: ${app.id}, ${app.name}. $s")
   }
   
   private def stageFromProto(stage: Stage): Either[String, StoredStage] = {
