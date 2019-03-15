@@ -10,7 +10,7 @@ import akka.stream.ActorMaterializer
 import cats.effect.Effect
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import io.hydrosphere.serving.gateway.{InvalidArgument, InternalError, NotFound}
+import io.hydrosphere.serving.gateway.GatewayError.{InvalidArgument, InternalError, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
 import org.apache.logging.log4j.scala.Logging
