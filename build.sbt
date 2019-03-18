@@ -46,16 +46,6 @@ dockerfile in docker := {
     from("openjdk:8u151-jre-alpine")
 
     env("APP_PORT", "9090")
-    env("SIDECAR_PORT", "8080")
-    env("SIDECAR_HOST", "localhost")
-
-    label("DEPLOYMENT_TYPE", "APP")
-
-    label("SERVICE_ID", "-10")
-    label("RUNTIME_ID", "-10")
-    label("HS_SERVICE_MARKER", "HS_SERVICE_MARKER")
-    label("DEPLOYMENT_TYPE", "APP")
-    label("SERVICE_NAME", "gateway")
 
     add(dockerFilesLocation, "/hydro-serving/app/")
     // Add all files on the classpath
@@ -64,7 +54,6 @@ dockerfile in docker := {
     add(jarFile, jarTarget)
 
     volume("/model")
-    run("dos2unix", "/hydro-serving/app/start.sh")
     cmd("/hydro-serving/app/start.sh")
   }
 }
