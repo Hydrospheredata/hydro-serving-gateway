@@ -1,27 +1,27 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
-import cats._
+import akka.actor.ActorSystem
+import cats.data.NonEmptyList
 import cats.implicits._
-
-import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.discovery.serving.{Servable, ServingApp, Stage}
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionServiceStub
+
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
 
 case class StoredService(
   host: String,
   port: Int,
   weight: Int,
-  channel: ManagedChannel,
-  client: PredictionServiceStub
 )
 
 case class StoredStage(
   id: String,
-  services: Seq[StoredService],
-  signature: ModelSignature
+  services: NonEmptyList[StoredService],
+  signature: ModelSignature,
+  client: PredictDownstream
 )
 
 case class StoredApplication(
@@ -32,17 +32,18 @@ case class StoredApplication(
   stages: Seq[StoredStage]
 ) {
   
-  def close(): Unit = {
-    stages.flatMap(_.services).map(_.channel.shutdown())
+  def close(): Future[Unit] = {
+    val closes = stages.map(_.client.close())
+    Future.sequence(closes).map(_ => ())
   }
 }
 
 object StoredApplication {
   
-  def fromProto(app: ServingApp): Either[String, StoredApplication] = {
+  def create(app: ServingApp, deadline: Duration, sys: ActorSystem): Either[String, StoredApplication] = {
     val out = for {
       contract <- app.contract.toValid("Contract field is required").toEither
-      stages   <- app.pipeline.toList.traverse(stageFromProto)
+      stages   <- app.pipeline.toList.traverse(s => createStage(s, deadline, sys))
     } yield {
       StoredApplication(
         id = app.id,
@@ -55,32 +56,22 @@ object StoredApplication {
     out.leftMap(s => s"Invalid app: ${app.id}, ${app.name}. $s")
   }
   
-  private def stageFromProto(stage: Stage): Either[String, StoredStage] = {
+  private def createStage(stage: Stage, deadline: Duration, sys: ActorSystem): Either[String, StoredStage] = {
     def toService(servable: Servable): StoredService = {
-      val builder = ManagedChannelBuilder
-        .forAddress(servable.host, servable.port)
-        
-      builder.usePlaintext()
-      builder.enableRetry()
-      
-  
-      val chanell = builder.build()
-      val stub = PredictionServiceGrpc.stub(chanell)
-  
       StoredService(
         host = servable.host,
         port = servable.port,
-        weight = servable.weight,
-        channel = chanell,
-        client = stub
+        weight = servable.weight
       )
     }
     
-    stage.signature match {
-      case Some(sig) =>
-        StoredStage(stage.stageId, stage.servable.map(toService), sig).asRight
-      case None =>
-        s"Signature field is missing: ${stage.stageId}".asLeft
+    
+    (stage.signature, NonEmptyList.fromList(stage.servable.toList)) match {
+      case (Some(sig), Some(srvbls)) =>
+        val downstream = PredictDownstream.create(srvbls, deadline, sys)
+        StoredStage(stage.stageId, srvbls.map(toService), sig, downstream).asRight
+      case (x, y)=>
+        s"Invalid stage ${stage.stageId}. Signature field: $x. Servables: $y".asLeft
     }
   }
   

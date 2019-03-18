@@ -45,21 +45,13 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
     def write(list: Seq[T]) = JsArray(list.map(_.toJson).toVector)
   }
 
-  implicit val gwService = new JsonWriter[StoredService] {
-    override def write(obj: StoredService): JsValue = {
-      JsObject(
-        "host" -> JsString(obj.host),
-        "port" -> JsNumber(obj.port),
-        "weight" -> JsNumber(obj.weight)
-      )
-    }
-  }
+  implicit val gwService = jsonFormat3(StoredService.apply)
   
   implicit val gwStageFormat = new JsonWriter[StoredStage] {
     override def write(obj: StoredStage): JsValue = {
       JsObject(
         "id" -> JsString(obj.id),
-        "services" -> obj.services.toJson
+        "services" -> obj.services.toList.toJson
       )
     }
 

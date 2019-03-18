@@ -2,18 +2,16 @@ package io.hydrosphere.serving.gateway
 
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{IO, LiftIO}
-import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
-import io.hydrosphere.serving.gateway.discovery.application.XDSApplicationUpdateService
+import cats.effect.IO
+import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
 import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
 import io.hydrosphere.serving.gateway.http.HttpApi
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationInMemoryStorage
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext}
 
 
 object Main extends App with Logging {
@@ -33,7 +31,11 @@ object Main extends App with Logging {
     val applicationStorage = new ApplicationInMemoryStorage[IO]()
 
     logger.debug(s"Initializing application update service")
-    val applicationUpdater = new XDSApplicationUpdateService(applicationStorage, appConfig.application.manager)
+    val applicationUpdater = new DiscoveryService(
+      appConfig.application.manager,
+      appConfig.application.grpc.deadline,
+      applicationStorage
+    )
 
     val grpcAlg = Prediction.create[IO](appConfig).unsafeRunSync()
 

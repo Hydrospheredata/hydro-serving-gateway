@@ -7,7 +7,7 @@ import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
-import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, PredictDownstream, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.model.api.{Result, TensorUtil}
@@ -33,7 +33,7 @@ trait ApplicationExecutionService[F[_]] {
 }
 
 case class ExecutionUnit(
-  client: PredictionServiceStub,
+  client: PredictDownstream,
   meta: ExecutionMeta
 )
 
@@ -187,8 +187,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
         applicationNamespace = application.namespace,
         modelVersionId = 1L // TODO
       )
-      val client = stage.services.head.client
-      ExecutionUnit(client, meta)
+      ExecutionUnit(stage.client, meta)
     })
     servePipeline(units, request, tracingInfo)
   }

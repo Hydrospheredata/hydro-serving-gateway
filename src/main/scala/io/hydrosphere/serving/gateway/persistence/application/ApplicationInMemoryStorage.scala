@@ -2,24 +2,26 @@ package io.hydrosphere.serving.gateway.persistence.application
 
 import java.util.concurrent.locks.{Lock, ReentrantReadWriteLock}
 
-import cats.{Applicative, Id}
-import cats.syntax.applicative._
+import cats.effect.Sync
 
 import scala.collection.mutable
 
-class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F] {
+class ApplicationInMemoryStorage[F[_]: Sync] extends ApplicationStorage[F] {
   private[this] val applicationsById = mutable.Map[String, StoredApplication]()
   private[this] val applicationsByName = mutable.Map[String, StoredApplication]()
   private[this] val rwLock = new ReentrantReadWriteLock()
   
   private def usingLock[A](l: Lock)(f: => A): F[A] = {
-    try {
-      l.lock()
-      f.pure
-    } finally {
-      l.unlock()
+    Sync[F].delay {
+      try {
+        l.lock()
+        f
+      } finally {
+        l.unlock()
+      }
     }
   }
+  
   private def usingReadLock[A](f: => A): F[A] = usingLock(rwLock.readLock())(f)
   private def usingWriteLock[A](f: => A): F[A] = usingLock(rwLock.writeLock())(f)
   

@@ -1,27 +1,17 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import java.util.concurrent.atomic.AtomicReference
-
-import cats.MonadError
+import cats._
 import cats.effect._
-import cats.instances.function._
-import cats.syntax.applicativeError._
-import cats.syntax.compose._
-import cats.syntax.flatMap._
-import cats.syntax.functor._
-import cats.syntax.monadError._
-import io.grpc.Channel
+import cats.implicits._
 import io.hydrosphere.serving.gateway.config.Configuration
-import io.hydrosphere.serving.gateway.grpc
-import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit, RequestTracingInfo}
-import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
+import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, RequestTracingInfo}
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import io.hydrosphere.serving.tensorflow.tensor.TensorProto
 import io.hydrosphere.serving.tensorflow.types.DataType
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 import scala.util.Try
 
 
@@ -35,13 +25,15 @@ trait Prediction[F[_]] {
 
 }
 
+//TODO: tracingInfo doesn't work
+//TODO: remove or integrate open-tracing
 object Prediction {
 
   type PredictionStub = PredictionServiceGrpc.PredictionServiceStub
   type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictionWithMetadata]
 
   def create[F[_]](conf: Configuration)(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
-    val predictF = overGrpc(conf.application.grpc.deadline)
+    val predictF = predictWithLatency(Clock.create[F])
     val mkReporting = if (conf.application.shadowingOn) {
       Reporting.default[F](conf)
     } else {
@@ -69,55 +61,34 @@ object Prediction {
     }
   }
 
-  def overGrpc[F[_]](deadline: Duration)(
-    implicit F: LiftIO[F]): PredictFunc[F] = {
+  def predictWithLatency[F[_]](clock: Clock[F])(
+    implicit F: Monad[F], L: LiftIO[F]): PredictFunc[F] = {
 
     (eu: ExecutionUnit, req: PredictRequest, tracingInfo: Option[RequestTracingInfo]) => {
 
-      val io = IO.suspend {
-        val initReq = eu.client.withDeadlineAfter(deadline.length, deadline.unit)
+      for {
+        start <- clock.monotonic(MILLISECONDS)
+        resp  <- L.liftIO(IO.fromFuture(IO(eu.client.send(req))))
+        stop  <- clock.monotonic(MILLISECONDS)
+      } yield {
+         val latency = stop - start
 
-        val modelVersionHeader = new AtomicReference[String](null)
-        val envoyUpstreamTime = new AtomicReference[String](null)
-        val setTracingF = tracingInfo.fold(identity[PredictionStub](_))(i => setTracingHeaders(_, i))
-        val setCallOptsF = setCallOptions(modelVersionHeader, envoyUpstreamTime)
-        val reqBuilder = (setCallOptsF >>> setTracingF) (initReq)
-        IO.fromFuture(IO(reqBuilder.predict(req)))
-          .map { result =>
-            val latency = Try(Option(envoyUpstreamTime.get()).map(_.toLong))
-              .toOption
-              .flatten
-              .getOrElse(0L)
-
-            val resultWithInternalInfo = result.addInternalInfo(
-              "system.latency" -> TensorProto(
-                dtype = DataType.DT_INT64,
-                int64Val = Seq(latency),
-                tensorShape = TensorShape.scalar.toProto
-              )
-            )
-
-            PredictionWithMetadata(
-              response = resultWithInternalInfo,
-              modelVersionId = Option(modelVersionHeader.get()),
-              latency = Option(envoyUpstreamTime.get())
-            )
-          }
+        val resultWithInternalInfo = resp.addInternalInfo(
+          "system.latency" -> TensorProto(
+            dtype = DataType.DT_INT64,
+            int64Val = Seq(latency),
+            tensorShape = TensorShape.scalar.toProto
+          )
+        )
+  
+        PredictionWithMetadata(
+          response = resultWithInternalInfo,
+          modelVersionId = eu.meta.modelVersionId.toString.some,
+          latency = latency.toString.some
+        )
       }
-      F.liftIO(io)
     }
   }
 
-  private def setCallOptions(modelVersionHeader: AtomicReference[String], envoyUpstreamTime: AtomicReference[String]): PredictionStub => grpc.Prediction.PredictionStub =  (req: PredictionStub) => {
-    req.withOption(Headers.XServingModelVersionId.callOptionsClientResponseWrapperKey, modelVersionHeader)
-      .withOption(Headers.XEnvoyUpstreamServiceTime.callOptionsClientResponseWrapperKey, envoyUpstreamTime)
-  }
-
-  private def setTracingHeaders(req: PredictionStub, tracingInfo: RequestTracingInfo ): PredictionStub = {
-    import tracingInfo._
-    val upd1 = req.withOption(Headers.XRequestId.callOptionsKey, xRequestId)
-    val upd2 = xB3requestId.fold(upd1)(id => upd1.withOption(Headers.XB3TraceId.callOptionsKey, id))
-    xB3SpanId.fold(upd2)(id => upd2.withOption(Headers.XB3ParentSpanId.callOptionsKey, id))
-  }
 
 }

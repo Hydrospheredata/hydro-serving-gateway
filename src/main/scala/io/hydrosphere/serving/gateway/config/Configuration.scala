@@ -2,12 +2,12 @@ package io.hydrosphere.serving.gateway.config
 
 import org.apache.logging.log4j.scala.Logging
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 final case class ManagerConfig(
   host: String,
   port: Int,
-  xdsSilentRestartSeconds: Long
+  reconnectTimeout: FiniteDuration
 )
 
 final case class MonitoringConfig(
