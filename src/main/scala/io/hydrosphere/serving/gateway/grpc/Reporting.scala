@@ -153,7 +153,7 @@ object Reporting {
         Option(ExecutionMetadata(
           applicationId = eu.applicationId,
           stageId = eu.stageId,
-          modelVersionId = -1,
+          modelVersionId = eu.modelVersionId,
           signatureName = eu.signatureName,
           applicationRequestId = eu.applicationRequestId.getOrElse(""),
           requestId = eu.applicationRequestId.getOrElse(""), //todo fetch from response,
