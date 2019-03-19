@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import java.util.concurrent.{Executor, ExecutorService, Executors}
+import java.util.concurrent.Executors
 
 import cats.data.NonEmptyList
 import cats.effect._
@@ -9,7 +9,7 @@ import cats.syntax.applicative._
 import cats.syntax.applicativeError._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
-import cats.{Applicative, Functor, Monad}
+import cats.{Applicative, Functor}
 import io.grpc.Channel
 import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
@@ -20,9 +20,10 @@ import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.Respons
 import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
 import io.hydrosphere.serving.monitoring.monitoring._
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
+import org.apache.logging.log4j.scala.Logging
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
 trait Reporter[F[_]] {
@@ -41,7 +42,7 @@ object Reporter {
 
 }
 
-object Reporters {
+object Reporters extends Logging {
 
   object Monitoring {
 
@@ -60,6 +61,7 @@ object Reporters {
       grpcClient: MonitoringServiceStub
     ): Reporter[F] = {
       Reporter.fromFuture(info => {
+        logger.info(s"Sending data to reporter (metadata=${info.metadata})")
         grpcClient
           .withOption(AuthorityReplacerInterceptor.DESTINATION_KEY, destination)
           .withDeadlineAfter(deadline.length, deadline.unit)
