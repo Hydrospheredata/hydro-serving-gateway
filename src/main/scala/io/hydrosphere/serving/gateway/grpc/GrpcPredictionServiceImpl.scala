@@ -2,6 +2,7 @@ package io.hydrosphere.serving.gateway.grpc
 
 import cats.effect.Effect
 import cats.effect.syntax.effect._
+import cats.syntax.monadError._
 import io.hydrosphere.serving.gateway.GatewayError.InvalidArgument
 import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.Headers
@@ -26,7 +27,14 @@ class GrpcPredictionServiceImpl[F[_]: Effect](
           xB3SpanId = Option(Headers.XB3SpanId.contextKey.get())
         ))
         val resultF = gatewayPredictionService.serveGrpcApplication(request, tracingInfo)
-        resultF.toIO.unsafeToFuture()
+        resultF.toIO.attempt.map {
+          case Right(result) =>
+            logger.info("Got successful GRPC response")
+            Right(result)
+          case Left(error) =>
+            logger.warn("Got an error from GRPC", error)
+            Left(error)
+        }.rethrow.unsafeToFuture()
 
       case None => Future.failed(InvalidArgument("ModelSpec is not defined"))
     }

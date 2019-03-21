@@ -20,6 +20,7 @@ import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import io.hydrosphere.serving.tensorflow.tensor.TensorProto
 import io.hydrosphere.serving.tensorflow.types.DataType
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
 import scala.util.Try
@@ -35,7 +36,7 @@ trait Prediction[F[_]] {
 
 }
 
-object Prediction {
+object Prediction extends Logging {
 
   type PredictionStub = PredictionServiceGrpc.PredictionServiceStub
   type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictionWithMetadata]
@@ -74,8 +75,11 @@ object Prediction {
           .flatMap(out => {
             out match {
               case Left(e) =>
+                logger.info(s"Predict failed $eu")
+                logger.info(e.getMessage)
                 reporting.report(req, eu, Left(e)).as(out)
               case Right(v) =>
+                logger.info(s"Predict completed $eu")
                 reporting.report(req, eu, Right(v)).as(out)
             }
           })
