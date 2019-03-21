@@ -47,7 +47,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
         Seq(ContractBuilders.simpleTensorModelField("a", DataType.DT_STRING, TensorShape.scalar)),
         Seq(ContractBuilders.simpleTensorModelField("a", DataType.DT_STRING, TensorShape.scalar))
       )
-      val contract = ModelContract("app", Seq(signature))
+      val contract = ModelContract("app", Some(signature))
       val appStorage = new ApplicationStorage[IO] {
         override def get(name: String): IO[Option[StoredApplication]] = IO(Some(StoredApplication(
           1, "app", None, contract, StoredExecutionGraph(Seq(StoredStage("1", Seq(StoredService(1, 100)), Some(signature))))

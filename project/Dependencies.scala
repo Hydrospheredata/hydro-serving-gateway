@@ -6,7 +6,7 @@ object Dependencies {
 
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "0.2.2"
+  val servingGrpcScala = "2.0.0rc5"
   val envoyDataPlaneApi = "2.0.0"
 
   val catsVersion = "1.3.1"

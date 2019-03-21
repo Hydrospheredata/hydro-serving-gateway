@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.grpc
 import cats.effect.Effect
 import cats.effect.syntax.effect._
 import cats.syntax.monadError._
-import io.hydrosphere.serving.gateway.InvalidArgument
+import io.hydrosphere.serving.gateway.GatewayError.InvalidArgument
 import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, RequestTracingInfo}
 import io.hydrosphere.serving.grpc.Headers
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
