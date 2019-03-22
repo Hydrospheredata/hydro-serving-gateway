@@ -1,26 +1,22 @@
 package io.hydrosphere.serving.gateway.grpc.reqstore
 
-import akka.NotUsed
 import akka.http.scaladsl.model._
-import akka.stream.scaladsl.Source
-import akka.util.ByteString
-import cats.MonadError
-import cats.effect.Async
+import cats.effect.{Async, Sync}
 import cats.syntax.either._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import io.hydrosphere.serving.gateway.config.ReqStoreConfig
 import io.hydrosphere.serving.monitoring.monitoring.TraceData
-import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
+import org.apache.logging.log4j.scala.Logging
 
 trait ReqStore[F[_], A] {
   def save(name: String, a: A): F[TraceData]
 }
 
-object ReqStore {
+object ReqStore extends Logging {
 
-  import spray.json._
   import jsonCodecs._
+  import spray.json._
 
   def create[F[_], A](cfg: ReqStoreConfig)(
     implicit
@@ -32,11 +28,12 @@ object ReqStore {
 
   def create0[F[_], A](client: HttpClient[F])(
     implicit
-    F: MonadError[F, Throwable],
+    F: Sync[F],
     tbs: ToByteSource[A]
   ): ReqStore[F, A] = {
     new ReqStore[F, A] {
-      override def save(name: String, a: A): F[TraceData] = {
+      override def save(name: String, a: A): F[TraceData] = F.defer {
+        logger.info("Sending data to ReqStore")
         val byteSource = tbs.asByteSource(a)
 
         val entity = HttpEntity.Default(
@@ -52,6 +49,7 @@ object ReqStore {
         )
 
         client.send(httpReq).flatMap(rsp => {
+          logger.info("Got answer from ReqStore")
           val data = new String(rsp.body)
           if (rsp.code == 200) {
             val decode = Either.catchNonFatal(data.parseJson.convertTo[TraceData])

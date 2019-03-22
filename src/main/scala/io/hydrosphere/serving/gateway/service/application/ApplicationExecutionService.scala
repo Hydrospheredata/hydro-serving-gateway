@@ -1,16 +1,17 @@
 package io.hydrosphere.serving.gateway.service.application
 
+import cats.{Applicative, Traverse}
 import cats.effect.Sync
 import cats.implicits._
-import cats.{Applicative, Traverse}
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.{InvalidArgument, NotFound}
+import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication, StoredStage}
+import io.hydrosphere.serving.model.api.TensorUtil
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, PredictDownstream, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
-import io.hydrosphere.serving.model.api.{Result, TensorUtil}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionServiceStub
@@ -61,14 +62,14 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   def getApp(name: String): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.getByName(name)
-      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with name $name"))
+      app <- Sync[F].fromOption(maybeApp, GatewayError.NotFound(s"Can't find an app with name $name"))
     } yield app
   }
 
   def getApp(id: Long): F[StoredApplication] = {
     for {
       maybeApp <- applicationStorage.getById(id.toString)
-      app <- Sync[F].fromOption(maybeApp, NotFound(s"Can't find an app with id $id"))
+      app <- Sync[F].fromOption(maybeApp, GatewayError.NotFound(s"Can't find an app with id $id"))
     } yield app
   }
 
@@ -83,17 +84,16 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
           result <- serveApplication(app, data, tracingInfo)
         } yield result
       case None =>
-        Sync[F].raiseError(InvalidArgument("ModelSpec is not defined"))
+        Sync[F].raiseError(GatewayError.InvalidArgument("ModelSpec is not defined"))
     }
   }
 
   def jsonToRequest(appName: String, inputs: JsObject, signanture: ModelSignature): Try[PredictRequest] = {
-
     try {
       val c = new SignatureBuilder(signanture).convert(inputs)
       c match {
         case Left(value) =>
-          Failure(InvalidArgument(value.message))
+          Failure(GatewayError.InvalidArgument(s"Validation error: $value"))
         case Right(tensors) =>
           Success(PredictRequest(
             modelSpec = Some(
@@ -107,7 +107,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
           ))
       }
     } catch {
-      case x: Throwable => Failure(InvalidArgument(x.getMessage))
+      case x: Throwable => Failure(GatewayError.InvalidArgument(x.getMessage))
     }
   }
 
@@ -115,8 +115,8 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     for {
       app <- getApp(jsonServeRequest.targetId)
       signature <- Sync[F].fromOption(
-        app.contract.signatures.headOption,
-        NotFound(s"Tried to access invalid application. Empty contract.")
+        app.contract.predict,
+        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
       )
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
@@ -128,8 +128,8 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     for {
       app <- getApp(jsonServeByNameRequest.appName)
       signature <- Sync[F].fromOption(
-        app.contract.signatures.headOption,
-        NotFound(s"Tried to access invalid application. Empty contract.")
+        app.contract.predict,
+        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
       )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
@@ -137,13 +137,16 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     } yield responseToJsObject(result)
   }
 
-  def verify(request: PredictRequest): Either[Map[String, Result.HError], PredictRequest] = {
+  def verify(request: PredictRequest): Either[Map[String, GatewayError], PredictRequest] = {
     val verificationResults = request.inputs.map {
       case (name, tensor) =>
         val verifiedTensor = if (!tensor.tensorContent.isEmpty) { // tensorContent - byte field, thus skip verifications
           Right(tensor)
         } else {
-          TensorUtil.verifyShape(tensor)
+          Either.fromOption(
+            TensorUtil.verifyShape(tensor),
+            GatewayError.InvalidTensorShape(s"$name tensor has invalid shape").asInstanceOf[GatewayError]
+          )
         }
         name -> verifiedTensor
     }
@@ -157,6 +160,21 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       Right(request.copy(inputs = verifiedInputs))
     } else {
       Left(errors)
+    }
+  }
+
+  def predictConsecutiveUnits(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
+    //TODO Add request id for step
+    val empty = Applicative[F].pure(PredictResponse(outputs = data.inputs))
+    units.foldLeft(empty) {
+      case (previous, current) =>
+        previous.flatMap { res =>
+          val request = PredictRequest(
+            modelSpec = ModelSpec(signatureName = current.meta.servicePath).some,
+            inputs = res.outputs
+          )
+          prediction.predict(current, request, tracingInfo).map(_.response)
+        }
     }
   }
 

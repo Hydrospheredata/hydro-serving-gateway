@@ -18,6 +18,7 @@ import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
 import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.monitoring._
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
@@ -39,7 +40,7 @@ object Reporter {
 
 }
 
-object Reporters {
+object Reporters extends Logging {
 
   object Monitoring {
   
@@ -137,7 +138,7 @@ object Reporting {
         Option(ExecutionMetadata(
           applicationId = eu.applicationId,
           stageId = eu.stageId,
-          modelVersionId = -1,
+          modelVersionId = eu.modelVersionId,
           signatureName = eu.signatureName,
           applicationRequestId = eu.applicationRequestId.getOrElse(""),
           requestId = eu.applicationRequestId.getOrElse(""), //todo fetch from response,

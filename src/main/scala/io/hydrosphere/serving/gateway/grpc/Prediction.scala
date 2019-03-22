@@ -10,6 +10,7 @@ import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 import io.hydrosphere.serving.tensorflow.tensor.TensorProto
 import io.hydrosphere.serving.tensorflow.types.DataType
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.{Duration, MILLISECONDS}
 import scala.util.Try
@@ -27,7 +28,7 @@ trait Prediction[F[_]] {
 
 //TODO: tracingInfo doesn't work
 //TODO: remove or integrate open-tracing
-object Prediction {
+object Prediction extends Logging {
 
   type PredictionStub = PredictionServiceGrpc.PredictionServiceStub
   type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictionWithMetadata]
