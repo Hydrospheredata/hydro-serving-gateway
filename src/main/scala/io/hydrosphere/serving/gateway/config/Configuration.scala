@@ -6,7 +6,8 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 
 final case class ManagerConfig(
   host: String,
-  port: Int,
+  grpcPort: Int,
+  httpPort: Int,
   reconnectTimeout: FiniteDuration
 )
 

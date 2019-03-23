@@ -34,7 +34,7 @@ class DiscoveryWatcher(
   
   val stub = {
     val builder = ManagedChannelBuilder
-      .forAddress(managerConf.host, managerConf.port)
+      .forAddress(managerConf.host, managerConf.grpcPort)
     
     builder.enableRetry()
     builder.usePlaintext()
