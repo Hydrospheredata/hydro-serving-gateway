@@ -7,8 +7,6 @@ import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import org.scalatest.{FunSpec, Matchers}
 

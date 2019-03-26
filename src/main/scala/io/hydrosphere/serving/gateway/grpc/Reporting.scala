@@ -16,9 +16,10 @@ import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrEx
 import io.hydrosphere.serving.gateway.grpc.reqstore.{Destination, ReqStore}
 import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
 import io.hydrosphere.serving.grpc.AuthorityReplacerInterceptor
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.monitoring.monitoring.MonitoringServiceGrpc.MonitoringServiceStub
-import io.hydrosphere.serving.monitoring.monitoring._
+import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
+import io.hydrosphere.serving.monitoring.api.MonitoringServiceGrpc.MonitoringServiceStub
+import io.hydrosphere.serving.monitoring.api._
+import io.hydrosphere.serving.monitoring.metadata._
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import org.apache.logging.log4j.scala.Logging
 

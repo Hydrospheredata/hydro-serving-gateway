@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
+import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
 import scalapb.GeneratedMessage
 import scalapb.descriptors.ScalaType
 
