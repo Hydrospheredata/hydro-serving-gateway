@@ -3,14 +3,15 @@ package io.hydrosphere.serving.gateway.http
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpMethods._
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{ExceptionHandler, Route}
 import akka.stream.ActorMaterializer
 import cats.effect.Effect
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import io.hydrosphere.serving.gateway.GatewayError.{InvalidArgument, InternalError, NotFound}
+import io.hydrosphere.serving.gateway.BuildInfo
+import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
 import org.apache.logging.log4j.scala.Logging
@@ -62,11 +63,15 @@ class HttpApi[F[_]: Effect](
 
   val predictionController = new JsonPredictionController(applicationExecutionService)
 
-  val routes: Route = CorsDirectives.cors(
-    CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))
-  ) {
+  val routes: Route = CorsDirectives.cors(CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))) {
     handleExceptions(commonExceptionHandler) {
       predictionController.routes ~
+        path("gateway" / "buildinfo") {
+          complete(HttpResponse(
+            status = StatusCodes.OK,
+            entity = HttpEntity(ContentTypes.`application/json`, BuildInfo.toJson)
+          ))
+        } ~
         path("health") {
           complete {
             "OK"

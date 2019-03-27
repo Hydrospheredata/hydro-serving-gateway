@@ -1,17 +1,7 @@
 def repository = 'hydro-serving-gateway'
 
-/*
-def buildAndPublishReleaseFunction={
-    //Buid serving
-    def curVersion = getVersion()
-    sh "sbt -DappVersion=${curVersion} compile docker"
-}
-*/
-
 def buildFunction={
-    //Buid serving
-    def curVersion = getVersion()
-    sh "sbt -DappVersion=${curVersion} test docker"
+    sh "sbt test docker:publishLocal"
 }
 
 def collectTestResults = {

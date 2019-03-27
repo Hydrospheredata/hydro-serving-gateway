@@ -2,7 +2,7 @@ package io.hydrosphere.serving.gateway
 
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{IO, LiftIO}
+import cats.effect.IO
 import io.grpc.{Channel, ClientInterceptors, ManagedChannelBuilder}
 import io.hydrosphere.serving.gateway.discovery.application.XDSApplicationUpdateService
 import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
@@ -13,19 +13,16 @@ import io.hydrosphere.serving.grpc.{AuthorityReplacerInterceptor, Headers}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext}
 
 
 object Main extends App with Logging {
 
-  implicit val contextShift = IO.contextShift(scala.concurrent.ExecutionContext.global)
-
+  implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.Implicits.global
+  implicit val contextShift = IO.contextShift(ec)
   logger.info("Hydroserving gateway service")
   try {
-
     import io.hydrosphere.serving.gateway.config.Inject._
-
-    implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.Implicits.global
 
     logger.debug(s"Setting up GRPC sidecar channel")
     val builder = ManagedChannelBuilder
