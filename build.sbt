@@ -27,15 +27,17 @@ libraryDependencies ++= Dependencies.hydroServingGatewayDependencies
 
 enablePlugins(AshScriptPlugin)
 bashScriptExtraDefines := Seq(
-  "opts=\"$opts -Dsidecar.port=$SIDECAR_INGRESS_PORT\"",
-  "opts=\"$opts -Dsidecar.host=$SIDECAR_HOST\"",
-  "opts=\"$opts -Dapplication.http.port=$GATEWAY_HTTP_PORT\"",
-  "opts=\"$opts -Dapplication.shadowing-on=$APP_SHADOWING_ON\"",
-  "opts=\"$opts -Dakka.http.server.parsing.max-content-length=$MAX_CONTENT_LENGTH\"",
-  "opts=\"$opts -Dakka.http.client.parsing.max-content-length=$MAX_CONTENT_LENGTH\"",
-  "opts=\"$opts -Dapplication.grpc.deadline=$GRPC_DEADLINE\"",
-  "opts=\"$opts -Dapplication.grpc.port=$GATEWAY_GRPC_PORT\"",
-  "opts=\"$opts -Dapplication.grpc.max-message-size=$MAX_MESSAGE_SIZE\""
+  "APP_OPTS=\"$APP_OPTS -Dsidecar.port=$SIDECAR_INGRESS_PORT\"",
+  "APP_OPTS=\"$APP_OPTS -Dsidecar.host=$SIDECAR_HOST\"",
+  "APP_OPTS=\"$APP_OPTS -Dapplication.http.port=$GATEWAY_HTTP_PORT\"",
+  "APP_OPTS=\"$APP_OPTS -Dapplication.shadowing-on=$APP_SHADOWING_ON\"",
+  "APP_OPTS=\"$APP_OPTS -Dakka.http.server.parsing.max-content-length=$MAX_CONTENT_LENGTH\"",
+  "APP_OPTS=\"$APP_OPTS -Dakka.http.client.parsing.max-content-length=$MAX_CONTENT_LENGTH\"",
+  "APP_OPTS=\"$APP_OPTS -Dapplication.grpc.deadline=$GRPC_DEADLINE\"",
+  "APP_OPTS=\"$APP_OPTS -Dapplication.grpc.port=$GATEWAY_GRPC_PORT\"",
+  "APP_OPTS=\"$APP_OPTS -Dapplication.grpc.max-message-size=$MAX_MESSAGE_SIZE\"",
+  "opts=$APP_OPTS",
+  "echo $opts"
 )
 enablePlugins(DockerPlugin)
 packageName in Docker := "hydrosphere/serving-gateway"
