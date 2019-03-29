@@ -32,7 +32,7 @@ object Main extends App with Logging {
 
     logger.debug(s"Initializing application update service")
     val applicationUpdater = new DiscoveryService(
-      appConfig.application.manager,
+      appConfig.application.apiGateway,
       appConfig.application.grpc.deadline,
       applicationStorage
     )

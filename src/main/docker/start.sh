@@ -8,9 +8,12 @@
 [ -z "$MAX_MESSAGE_SIZE" ] && MAX_MESSAGE_SIZE="536870912"
 [ -z "$GRPC_DEADLINE" ] && GRPC_DEADLINE="60seconds"
 
-[ -z "$MANAGER_HOST" ] && MANAGER_HOST="manager"
-[ -z "$MANAGER_PORT" ] && MANAGER_GRPC_PORT="9091"
-[ -z "$MANAGER_PORT" ] && MANAGER_HTTP_PORT="9090"
+[ -z "$API_GATEWAY_HOST" ] && API_GATEWAY_HOST="managerui"
+[ -z "$API_GATEWAY_GRPC_PORT" ] && API_GATEWAY_GRPC_PORT="9091"
+[ -z "$API_GATEWAY_HTTP_PORT" ] && API_GATEWAY_HTTP_PORT="9090"
+
+[ -z "$GRPC_PORT" ] && GRPC_PORT="9091"
+[ -z "$HTTP_PORT" ] && HTTP_PORT="9090"
 
 JAVA_OPTS="-Xmx$JAVA_XMX -Xms$JAVA_XMX"
 
@@ -20,10 +23,11 @@ echo "JAVA_OPTS=$JAVA_OPTS"
 if [ "$CUSTOM_CONFIG" = "" ]
 then
     echo "Custom config does not exist"
+    APP_OPTS="$APP_OPTS -Dapplication.http.port=$HTTP_PORT -Dapplication.grpc.port=$GRPC_PORT"
     APP_OPTS="$APP_OPTS -Dapplication.shadowing-on=$APP_SHADOWING_ON"
     APP_OPTS="$APP_OPTS -Dakka.http.server.parsing.max-content-length=$MAX_CONTENT_LENGTH -Dakka.http.client.parsing.max-content-length=$MAX_CONTENT_LENGTH"
     APP_OPTS="$APP_OPTS -Dapplication.grpc.deadline=$GRPC_DEADLINE -Dapplication.grpc.max-message-size=$MAX_MESSAGE_SIZE"
-    APP_OPTS="$APP_OPTS -Dapplication.manager.host=$MANAGER_HOST -Dapplication.manager.grpc-port=$MANAGER_GRPC_PORT -Dapplication.manager.http-port=$MANAGER_HTTP_PORT"
+    APP_OPTS="$APP_OPTS -Dapplication.api-gateway.host=$API_GATEWAY_HOST -Dapplication.api-gateway.grpc-port=$API_GATEWAY_GRPC_PORT -Dapplication.api-gateway.http-port=$API_GATEWAY_HTTP_PORT"
     echo "APP_OPTS=$APP_OPTS"
 
 else

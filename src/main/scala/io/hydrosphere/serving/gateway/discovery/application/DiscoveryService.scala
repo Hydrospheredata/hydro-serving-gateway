@@ -1,13 +1,11 @@
 package io.hydrosphere.serving.gateway.discovery.application
 
-import java.time.Instant
-
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props, Timers}
-import cats.effect.{Effect, IO}
+import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, Timers}
+import cats.effect.IO
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
 import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchReq, WatchResp}
-import io.hydrosphere.serving.gateway.config.ManagerConfig
+import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher.{Connect, ConnectionFailed}
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
 import org.apache.logging.log4j.scala.Logging
@@ -16,25 +14,25 @@ import scala.concurrent.duration._
 import scala.util.Try
 
 class DiscoveryService(
-  managerConf: ManagerConfig,
+  apiGatewayConf: ApiGatewayConfig,
   clientDeadline: Duration,
   applicationStorage: ApplicationStorage[IO]
 )(implicit actorSystem: ActorSystem) extends Logging {
 
-  val actor = actorSystem.actorOf(DiscoveryWatcher.props(managerConf, clientDeadline, applicationStorage))
+  val actor: ActorRef = actorSystem.actorOf(DiscoveryWatcher.props(apiGatewayConf, clientDeadline, applicationStorage))
 }
 
 class DiscoveryWatcher(
-  managerConf: ManagerConfig,
+  apiGatewayConf: ApiGatewayConfig,
   clientDeadline: Duration,
   applicationStorage: ApplicationStorage[IO]
 ) extends Actor with Timers with ActorLogging {
 
   import context._
   
-  val stub = {
+  val stub: ServingDiscoveryGrpc.ServingDiscoveryStub = {
     val builder = ManagedChannelBuilder
-      .forAddress(managerConf.host, managerConf.grpcPort)
+      .forAddress(apiGatewayConf.host, apiGatewayConf.grpcPort)
     
     builder.enableRetry()
     builder.usePlaintext()
@@ -55,7 +53,7 @@ class DiscoveryWatcher(
         case scala.util.Success(v) => context become listening(v)
         case scala.util.Failure(e) =>
           log.error(e, s"Can't setup discovery connection")
-          timers.startSingleTimer("connect", Connect, managerConf.reconnectTimeout)
+          timers.startSingleTimer("connect", Connect, apiGatewayConf.reconnectTimeout)
       }
   }
 
@@ -67,7 +65,7 @@ class DiscoveryWatcher(
         case Some(e) => log.error(e, "Discovery stream was failed with error")
         case None => log.warning("Discovery stream was closed")
       }
-      timers.startSingleTimer("connect", Connect, managerConf.reconnectTimeout)
+      timers.startSingleTimer("connect", Connect, apiGatewayConf.reconnectTimeout)
       context become disconnected
   }
   
@@ -76,8 +74,8 @@ class DiscoveryWatcher(
     val converted = resp.added.map(app => StoredApplication.create(app, clientDeadline, system))
     val (valid, invalid) =
       converted.foldLeft((List.empty[StoredApplication], List.empty[String]))({
-        case ((valid, invalid), Left(e)) => (valid, e :: invalid)
-        case ((valid, invalid), Right(v)) => (v :: valid, invalid)
+        case ((_valid, _invalid), Left(e)) => (_valid, e :: _invalid)
+        case ((_valid, _invalid), Right(v)) => (v :: _valid, _invalid)
       })
   
     invalid.foreach(msg => {
@@ -127,8 +125,8 @@ object DiscoveryWatcher {
   case object Connect
 
   def props(
-    managerConfig: ManagerConfig,
+    apiGatewayConf: ApiGatewayConfig,
     clientDeadline: Duration,
     applicationStorage: ApplicationStorage[IO]
-  ): Props = Props(new DiscoveryWatcher(managerConfig, clientDeadline, applicationStorage))
+  ): Props = Props(new DiscoveryWatcher(apiGatewayConf, clientDeadline, applicationStorage))
 }

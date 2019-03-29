@@ -11,7 +11,7 @@ import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.{Applicative, Functor}
 import io.grpc.ManagedChannelBuilder
-import io.hydrosphere.serving.gateway.config.{Configuration, MonitoringConfig}
+import io.hydrosphere.serving.gateway.config.{ApiGatewayConfig, Configuration}
 import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
 import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
@@ -44,9 +44,10 @@ object Reporters extends Logging {
 
   object Monitoring {
   
-    def default[F[_] : Functor : LiftIO](cfg: MonitoringConfig, deadline: Duration): Reporter[F] = {
-      val builder = ManagedChannelBuilder.forAddress(cfg.host, cfg.port)
+    def default[F[_] : Functor : LiftIO](cfg: ApiGatewayConfig, deadline: Duration): Reporter[F] = {
+      val builder = ManagedChannelBuilder.forAddress(cfg.host, cfg.grpcPort)
       builder.enableRetry()
+      builder.usePlaintext()
       val channel = builder.build()
       val stub = MonitoringServiceGrpc.stub(channel)
     
@@ -74,7 +75,7 @@ object Reporting {
     val appConf = conf.application
     val deadline = appConf.grpc.deadline
     
-    val monitoring = Reporters.Monitoring.default(appConf.monitoring, deadline)
+    val monitoring = Reporters.Monitoring.default(appConf.apiGateway, deadline)
 
     val es = Executors.newCachedThreadPool()
     val ec = ExecutionContext.fromExecutorService(es)
@@ -119,7 +120,7 @@ object Reporting {
   }
 
 
-  def responseOrError(poe: PredictionOrException) = {
+  def responseOrError(poe: PredictionOrException): ResponseOrError = {
     poe match {
       case Left(err) => ResponseOrError.Error(ExecutionError(err.getMessage))
       case Right(v) => ResponseOrError.Response(v.response)
