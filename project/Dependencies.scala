@@ -8,8 +8,7 @@ object Dependencies {
   val scalaTestVersion = "3.0.3"
   val servingGrpcScala = "2.0.0-alpha1"
 
-  val catsVersion = "1.3.1"
-  val catsEffectVersion = "1.0.0"
+  val catsEffectVersion = "1.2.0"
 
   lazy val akkaDependencies = Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -52,7 +51,6 @@ object Dependencies {
     akkaHttpDependencies ++
     grpcDependencies ++
     Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
       "org.typelevel" %% "cats-effect" % catsEffectVersion,
       "com.github.pureconfig" %% "pureconfig" % "0.9.1"
     )
