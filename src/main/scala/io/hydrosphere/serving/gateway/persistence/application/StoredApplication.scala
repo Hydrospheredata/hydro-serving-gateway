@@ -5,7 +5,7 @@ import cats.data.NonEmptyList
 import cats.implicits._
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.discovery.serving.{Servable, ServingApp, Stage}
+import io.hydrosphere.serving.manager.grpc.entities.{ModelVersion, Servable, ServingApp, Stage}
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -15,6 +15,7 @@ case class StoredService(
   host: String,
   port: Int,
   weight: Int,
+  modelVersion: ModelVersion
 )
 
 case class StoredStage(
@@ -57,19 +58,26 @@ object StoredApplication {
   }
   
   private def createStage(stage: Stage, deadline: Duration, sys: ActorSystem): Either[String, StoredStage] = {
-    def toService(servable: Servable): StoredService = {
-      StoredService(
-        host = servable.host,
-        port = servable.port,
-        weight = servable.weight
-      )
+    def toService(servable: Servable): Option[StoredService] = {
+      servable.modelVersion.map { mv =>
+        StoredService(
+          host = servable.host,
+          port = servable.port,
+          weight = servable.weight,
+          modelVersion = mv
+        )
+      }
     }
-    
     
     (stage.signature, NonEmptyList.fromList(stage.servable.toList)) match {
       case (Some(sig), Some(srvbls)) =>
-        val downstream = PredictDownstream.create(srvbls, deadline, sys)
-        StoredStage(stage.stageId, srvbls.map(toService), sig, downstream).asRight
+        val res = srvbls.map(toService)
+        if (res.exists(_.isEmpty)) {
+          s"Invalid stage ${stage.stageId}. No model information in servables $srvbls".asLeft
+        } else {
+          val downstream = PredictDownstream.create(srvbls, deadline, sys)
+          StoredStage(stage.stageId, res.map(_.get), sig, downstream).asRight
+        }
       case (x, y)=>
         s"Invalid stage ${stage.stageId}. Signature field: $x. Servables: $y".asLeft
     }

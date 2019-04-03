@@ -84,7 +84,7 @@ object Prediction extends Logging {
   
         PredictionWithMetadata(
           response = resultWithInternalInfo,
-          modelVersionId = eu.meta.modelVersionId.toString.some,
+          modelVersionId = resp.internalInfo.get("modelVersionId").flatMap(_.int64Val.headOption.map(_.toString)),
           latency = latency.toString.some
         )
       }

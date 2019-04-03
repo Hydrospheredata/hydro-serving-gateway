@@ -5,9 +5,11 @@ import java.util.concurrent.TimeUnit
 import akka.actor.{Actor, ActorSystem, PoisonPill, Props}
 import cats.data.NonEmptyList
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
-import io.hydrosphere.serving.discovery.serving.Servable
+import io.hydrosphere.serving.manager.grpc.entities.{ModelVersion, Servable}
+import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
+import io.hydrosphere.serving.tensorflow.tensor.Int64Tensor
 
 import scala.collection.immutable.TreeMap
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -27,14 +29,14 @@ object PredictDownstream {
   def create(servables: NonEmptyList[Servable], deadline: Duration, sys: ActorSystem): PredictDownstream = {
     if (servables.length == 1) {
       val s = servables.head
-      single(s.host, s.port, deadline)
+      single(s.host, s.port, s.modelVersion.getOrElse(throw new IllegalArgumentException(s"Servable without model version! $s")), deadline)
     } else {
       balanced(servables, deadline, sys)
     }
   }
   
-  def single(host: String, port: Int, deadline: Duration): PredictDownstream = {
-    val stubAndChannel = mkStubAndChannel(host, port, deadline)
+  def single(host: String, port: Int, modelVersion: ModelVersion, deadline: Duration): PredictDownstream = {
+    val stubAndChannel = mkStubAndChannel(host, port, deadline, modelVersion)
     
     new PredictDownstream {
       override def send(req: PredictRequest): Future[PredictResponse] =
@@ -48,7 +50,12 @@ object PredictDownstream {
   def balanced(servables: NonEmptyList[Servable], deadline: Duration, sys: ActorSystem): PredictDownstream = {
     
     val weightedServices = servables.map(s => {
-      val sac = mkStubAndChannel(s.host, s.port, deadline)
+      val sac = mkStubAndChannel(
+        s.host,
+        s.port,
+        deadline,
+        s.modelVersion.getOrElse(throw new IllegalArgumentException(s"Servable without model version! $s"))
+      )
       s.weight -> sac
     }).toList.toMap
     
@@ -74,11 +81,17 @@ object PredictDownstream {
   class StubAndChannel(
     stub: GRPCStub,
     deadline: Duration,
-    channel: ManagedChannel
+    channel: ManagedChannel,
+    modelVersion: ModelVersion
   ) {
     
     def call(req: PredictRequest): Future[PredictResponse] =
-      stub.withDeadlineAfter(deadline.length, deadline.unit).predict(req)
+      stub.withDeadlineAfter(deadline.length, deadline.unit)
+        .predict(req)
+        .map { res =>
+          val newInfo = res.internalInfo + ("modelVersionId" -> Int64Tensor(TensorShape.scalar, Seq(modelVersion.id)).toProto)
+          res.copy(internalInfo = newInfo)
+        }
     
     def close(): Future[Unit] = Future {
       channel.shutdown()
@@ -88,7 +101,7 @@ object PredictDownstream {
     
   }
   
-  def mkStubAndChannel(host: String, port: Int, deadline: Duration): StubAndChannel = {
+  def mkStubAndChannel(host: String, port: Int, deadline: Duration, modelVersion: ModelVersion): StubAndChannel = {
     val builder = ManagedChannelBuilder
       .forAddress(host, port)
     
@@ -97,7 +110,7 @@ object PredictDownstream {
     
     val channel = builder.build()
     val stub = PredictionServiceGrpc.stub(channel)
-    new StubAndChannel(stub, deadline, channel)
+    new StubAndChannel(stub, deadline, channel, modelVersion)
   }
   
   

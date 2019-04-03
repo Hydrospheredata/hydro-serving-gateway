@@ -203,7 +203,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
         signatureName = stage.signature.signatureName,
         stageId = stage.id,
         applicationNamespace = application.namespace,
-        modelVersionId = 1L // TODO
+        modelVersionId = stage.services.map(_.modelVersion.id).head // FIXME ubrat eto ebuchee govno otsuda
       )
       ExecutionUnit(stage.client, meta)
     })

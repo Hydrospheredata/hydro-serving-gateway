@@ -7,6 +7,8 @@ scalaVersion := "2.12.6"
 
 lazy val currentAppVersion = sys.props.getOrElse("appVersion", "latest")
 
+javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+
 version := currentAppVersion
 
 parallelExecution in Test := false
