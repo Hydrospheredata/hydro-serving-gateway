@@ -17,7 +17,7 @@ class GrpcPredictionServiceImpl[F[_]: Effect](
 ) extends PredictionService with Logging {
 
   override def predict(request: PredictRequest): Future[PredictResponse] = {
-    logger.info(s"Got grpc request modelSpec=${request.modelSpec}")
+    logger.info(s"Got request from G modelSpec=${request.modelSpec}")
     request.modelSpec match {
       case Some(_) =>
         val requestId = Option(Headers.XRequestId.contextKey.get())

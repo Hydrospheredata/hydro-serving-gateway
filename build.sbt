@@ -19,7 +19,13 @@ fork in(IntegrationTest, testOnly) := true
 publishArtifact := false
 
 organization := "io.hydrosphere.serving"
+organizationName := "hydrosphere"
+organizationHomepage := Some(url("https://hydrosphere.io"))
 
+name := "hydro-serving-gateway"
+version := IO.read(file("version")).trim
+
+scalaVersion := "2.12.8"
 scalacOptions ++= Seq(
   "-unchecked",
   "-deprecation",
@@ -30,10 +36,18 @@ scalacOptions ++= Seq(
   "-language:implicitConversions",
   "-language:postfixOps"
 )
+mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
+
+parallelExecution in Test := false
+parallelExecution in IntegrationTest := false
+fork in(Test, test) := true
+fork in(IntegrationTest, test) := true
+fork in(IntegrationTest, testOnly) := true
 
 exportJars := false
 resolvers += Resolver.bintrayRepo("findify", "maven")
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
+
 libraryDependencies ++= Dependencies.hydroServingGatewayDependencies
 
 enablePlugins(sbtdocker.DockerPlugin)
@@ -63,3 +77,8 @@ dockerfile in docker := {
 imageNames in docker := Seq(
   ImageName(s"hydrosphere/serving-gateway:${version.value}")
 )
+
+enablePlugins(BuildInfoPlugin)
+buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion, git.gitCurrentBranch, git.gitCurrentTags, git.gitHeadCommit)
+buildInfoPackage := "io.hydrosphere.serving.gateway"
+buildInfoOptions += BuildInfoOption.ToJson 
