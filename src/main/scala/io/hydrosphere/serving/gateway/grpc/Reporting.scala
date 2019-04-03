@@ -107,7 +107,7 @@ object Reporting {
       ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore)
         .map(s => {
           (req: PredictRequest, eu: ExecutionMeta, resp: PredictionOrException) => {
-            s.save(eu.serviceName, (req, responseOrError(resp)))
+            s.save(eu.modelVersionId.toString, (req, responseOrError(resp)))
               .attempt
               .map(d => mkExecutionInformation(req, eu, resp, d.toOption))
           }

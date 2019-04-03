@@ -56,7 +56,7 @@ object Prediction extends Logging {
 
         exec(eu, req, tracingInfo)
           .attempt
-          .flatTap(out => reporting.report(req, eu.meta, out))
+          .flatTap(out => reporting.report(req, eu.meta.copy(modelVersionId = out.toOption.flatMap(_.modelVersionId).getOrElse(-1)), out))
           .rethrow
       }
     }
@@ -81,10 +81,10 @@ object Prediction extends Logging {
             tensorShape = TensorShape.scalar.toProto
           )
         )
-  
+
         PredictionWithMetadata(
           response = resultWithInternalInfo,
-          modelVersionId = resp.internalInfo.get("modelVersionId").flatMap(_.int64Val.headOption.map(_.toString)),
+          modelVersionId = resp.internalInfo.get("modelVersionId").flatMap(_.int64Val.headOption),
           latency = latency.toString.some
         )
       }
