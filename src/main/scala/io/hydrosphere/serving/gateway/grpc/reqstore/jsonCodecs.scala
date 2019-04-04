@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.grpc.reqstore
 
-import io.hydrosphere.serving.monitoring.monitoring.TraceData
+import io.hydrosphere.serving.monitoring.metadata.TraceData
 import spray.json._
 
 import scala.util.Try

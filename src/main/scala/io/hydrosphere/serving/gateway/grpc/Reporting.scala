@@ -15,8 +15,9 @@ import io.hydrosphere.serving.gateway.config.{ApiGatewayConfig, Configuration}
 import io.hydrosphere.serving.gateway.grpc.PredictionWithMetadata.PredictionOrException
 import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.service.application.ExecutionMeta
-import io.hydrosphere.serving.monitoring.monitoring.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.monitoring.monitoring._
+import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
+import io.hydrosphere.serving.monitoring.api.{ExecutionInformation, MonitoringServiceGrpc}
+import io.hydrosphere.serving.monitoring.metadata.{ExecutionError, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 import org.apache.logging.log4j.scala.Logging
 
@@ -150,7 +151,7 @@ object Reporting {
         Option(ExecutionMetadata(
           applicationId = eu.applicationId,
           stageId = eu.stageId,
-          modelVersionId = v.modelVersionId.flatMap(x => Try(x.toLong).toOption).getOrElse(eu.modelVersionId),
+          modelVersionId = v.modelVersionId.getOrElse(eu.modelVersionId),
           signatureName = eu.signatureName,
           applicationRequestId = eu.applicationRequestId.getOrElse(""),
           requestId = eu.applicationRequestId.getOrElse(""), //todo fetch from response,

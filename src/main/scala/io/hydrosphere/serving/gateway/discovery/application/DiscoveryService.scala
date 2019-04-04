@@ -2,9 +2,10 @@ package io.hydrosphere.serving.gateway.discovery.application
 
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, Timers}
 import cats.effect.IO
+import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchReq, WatchResp}
+import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchResp}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher.{Connect, ConnectionFailed}
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
@@ -57,7 +58,7 @@ class DiscoveryWatcher(
       }
   }
 
-  def listening(response: StreamObserver[WatchReq]): Receive = {
+  def listening(response: StreamObserver[Empty]): Receive = {
     case resp: WatchResp => handleResp(resp)
 
     case ConnectionFailed(maybeE) =>
@@ -93,17 +94,17 @@ class DiscoveryWatcher(
     upd.unsafeRunSync()
     
   }
-  
-  private def connect(): StreamObserver[WatchReq] = {
+
+  private def connect(): StreamObserver[Empty] = {
     val observer = new StreamObserver[WatchResp] {
       override def onError(e: Throwable): Unit = {
         self ! ConnectionFailed(Some(e))
       }
-    
+
       override def onCompleted(): Unit = {
         self ! ConnectionFailed(None)
       }
-    
+
       override def onNext(resp: WatchResp): Unit = {
         self ! resp
       }
