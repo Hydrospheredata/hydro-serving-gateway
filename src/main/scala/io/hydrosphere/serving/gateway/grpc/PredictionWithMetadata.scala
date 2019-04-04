@@ -4,7 +4,7 @@ import io.hydrosphere.serving.tensorflow.api.predict.PredictResponse
 
 case class PredictionWithMetadata(
   response: PredictResponse,
-  modelVersionId: Option[String],
+  modelVersionId: Option[Long],
   latency: Option[String]
 )
 

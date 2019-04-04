@@ -2,13 +2,19 @@ package io.hydrosphere.serving.gateway.config
 
 import org.apache.logging.log4j.scala.Logging
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
-final case class SidecarConfig(
-  host: String,
-  port: Int,
-  xdsSilentRestartSeconds: Long
-)
+//final case class ManagerConfig(
+//  host: String,
+//  grpcPort: Int,
+//  httpPort: Int,
+//  reconnectTimeout: FiniteDuration
+//)
+//
+//final case class MonitoringConfig(
+//  host: String,
+//  port: Int
+//)
 
 final case class GrpcConfig(
   port: Int,
@@ -20,33 +26,33 @@ final case class HttpConfig(
   port: Int
 )
 
-sealed trait HttpServiceAddr
-object HttpServiceAddr {
-  final case class EnvoyRoute(name: String) extends HttpServiceAddr
-  final case class RealAddress(
-    host: String,
-    port: Int,
-    schema: String
-  ) extends HttpServiceAddr
-}
+final case class ApiGatewayConfig(
+  host: String,
+  grpcPort: Int,
+  httpPort: Int,
+  reconnectTimeout: FiniteDuration
+)
+
 
 final case class ReqStoreConfig(
   enabled: Boolean,
-  address: HttpServiceAddr
+  host: String,
+  port: Int,
+  schema: String
 )
 
 final case class ApplicationConfig(
   grpc: GrpcConfig,
+//  manager: ManagerConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
-  profilingDestination: String,
-  monitoringDestination: String,
-  reqstore: ReqStoreConfig
+//  monitoring: MonitoringConfig,
+  reqstore: ReqStoreConfig,
+  apiGateway: ApiGatewayConfig
 )
 
 final case class Configuration(
   application: ApplicationConfig,
-  sidecar: SidecarConfig,
 )
 
 

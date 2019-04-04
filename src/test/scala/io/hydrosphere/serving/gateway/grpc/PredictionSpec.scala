@@ -1,26 +1,34 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import cats.Monad
-import cats.data.{Ior, WriterT}
 import cats.implicits._
 import cats.effect._
 import cats.effect.concurrent.Ref
-import cats.effect.implicits._
-import io.hydrosphere.serving.gateway.service.application.ExecutionUnit
+import io.hydrosphere.serving.gateway.persistence.application.PredictDownstream
+import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import org.scalatest.{FunSpec, Matchers}
 
+import scala.concurrent.Future
+
 class PredictionSpec extends FunSpec with Matchers {
 
+  val client = new PredictDownstream {
+    override def send(req: PredictRequest): Future[PredictResponse] = ???
+
+    override def close(): Future[Unit] = ???
+  }
   val executionUnit = ExecutionUnit(
-    "a",
-    "path",
-    applicationRequestId = Some("reqId"),
-    signatureName = "sigName",
-    applicationId = 1L,
-    modelVersionId = 1,
-    stageId = "stageId",
-    applicationNamespace = None
+      meta = ExecutionMeta(
+        "a",
+        "path",
+        applicationRequestId = Some("reqId"),
+        signatureName = "sigName",
+        applicationId = 1L,
+        modelVersionId = 1,
+        stageId = "stageId",
+        applicationNamespace = None
+      ),
+      client = client
   )
 
   val emptyRequest = PredictRequest(None, Map.empty)
@@ -33,7 +41,7 @@ class PredictionSpec extends FunSpec with Matchers {
       new Reporting[IO] {
         def report(
           req: PredictRequest,
-          eu: ExecutionUnit,
+          eu: ExecutionMeta,
           value: PredictionWithMetadata.PredictionOrException): IO[Unit] = ref.update(acc => value :: acc)
       }
     }
@@ -61,7 +69,7 @@ class PredictionSpec extends FunSpec with Matchers {
       val out = (prediction.predict(executionUnit, emptyRequest, None).attempt *> ref.get)
         .unsafeRunSync()
 
-      out.head shouldBe a[Left[Throwable, PredictionWithMetadata]]
+      out.head shouldBe a[Left[_, _]]
     }
 
   }

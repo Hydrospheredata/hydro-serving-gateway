@@ -1,13 +1,11 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
 trait ApplicationStorage[F[_]] {
-  def get(name: String): F[Option[StoredApplication]]
-
-  def get(id: Long): F[Option[StoredApplication]]
-
-  def version: F[String]
+  def getByName(name: String): F[Option[StoredApplication]]
+  def getById(id: String): F[Option[StoredApplication]]
 
   def listAll: F[Seq[StoredApplication]]
 
-  def update(apps: Seq[StoredApplication], version: String): F[String]
+  def addApps(apps: Seq[StoredApplication]): F[Unit]
+  def removeApps(ids: Seq[String]): F[Unit]
 }

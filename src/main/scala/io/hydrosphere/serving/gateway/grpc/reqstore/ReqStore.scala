@@ -5,6 +5,7 @@ import cats.effect.{Async, Sync}
 import cats.syntax.either._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
+import io.hydrosphere.serving.gateway.config.ReqStoreConfig
 import io.hydrosphere.serving.monitoring.metadata.TraceData
 import org.apache.logging.log4j.scala.Logging
 
@@ -17,15 +18,15 @@ object ReqStore extends Logging {
   import jsonCodecs._
   import spray.json._
 
-  def create[F[_], A](dest: Destination)(
+  def create[F[_], A](cfg: ReqStoreConfig)(
     implicit
     F: Async[F],
     tbs: ToByteSource[A]
   ): F[ReqStore[F, A]] = {
-    HttpClient.cachedPool(dest.host, dest.port, 200) map (create0(dest, _))
+    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(_))
   }
 
-  def create0[F[_], A](dest: Destination, client: HttpClient[F])(
+  def create0[F[_], A](client: HttpClient[F])(
     implicit
     F: Sync[F],
     tbs: ToByteSource[A]
@@ -45,7 +46,6 @@ object ReqStore extends Logging {
           HttpMethods.POST,
           Uri(s"/$name/put"),
           entity = entity,
-          headers = dest.additionalHeaders
         )
 
         client.send(httpReq).flatMap(rsp => {

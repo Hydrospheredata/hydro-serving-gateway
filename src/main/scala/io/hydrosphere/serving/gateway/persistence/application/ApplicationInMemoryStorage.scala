@@ -1,85 +1,61 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
-import java.util.concurrent.locks.ReentrantReadWriteLock
+import java.util.concurrent.locks.{Lock, ReentrantReadWriteLock}
 
-import cats.Applicative
-import cats.syntax.applicative._
+import cats.effect.Sync
 
 import scala.collection.mutable
 
-class ApplicationInMemoryStorage[F[_]: Applicative] extends ApplicationStorage[F] {
-  private[this] val applicationsById = mutable.Map[Long, StoredApplication]()
+class ApplicationInMemoryStorage[F[_]: Sync] extends ApplicationStorage[F] {
+  private[this] val applicationsById = mutable.Map[String, StoredApplication]()
   private[this] val applicationsByName = mutable.Map[String, StoredApplication]()
   private[this] val rwLock = new ReentrantReadWriteLock()
-  private[this] var currentVersion = "0"
+  
+  private def usingLock[A](l: Lock)(f: => A): F[A] = {
+    Sync[F].delay {
+      try {
+        l.lock()
+        f
+      } finally {
+        l.unlock()
+      }
+    }
+  }
+  
+  private def usingReadLock[A](f: => A): F[A] = usingLock(rwLock.readLock())(f)
+  private def usingWriteLock[A](f: => A): F[A] = usingLock(rwLock.writeLock())(f)
+  
+  override def listAll: F[Seq[StoredApplication]] =
+    usingReadLock(applicationsById.values.toSeq)
 
-  def version: F[String] = {
-    val lock = rwLock.readLock()
-    try {
-      lock.lock()
-       currentVersion.pure
-    } finally {
-      lock.unlock()
+  override def getByName(name: String): F[Option[StoredApplication]] =
+    usingReadLock(applicationsByName.get(name))
+
+  override def getById(id: String): F[Option[StoredApplication]] =
+    usingReadLock(applicationsById.get(id))
+
+  override def addApps(apps: Seq[StoredApplication]): F[Unit] = {
+    usingWriteLock {
+      apps.foreach { app =>
+        val prev = applicationsById.put(app.id, app)
+        applicationsByName.put(app.name, app)
+        prev.foreach(_.close())
+      }
     }
   }
 
-  def listAll: F[Seq[StoredApplication]] = {
-    val lock = rwLock.readLock()
-    try {
-      lock.lock()
-      applicationsById.values.toSeq.pure
-    } finally {
-      lock.unlock()
+  override def removeApps(ids: Seq[String]): F[Unit] = {
+    usingWriteLock {
+      ids.foreach { id =>
+        applicationsById.get(id) match {
+          case Some(app) =>
+            applicationsById.remove(id)
+            applicationsByName.remove(app.name)
+            app.close()
+          case None =>
+        }
+      }
     }
   }
-
-  def get(name: String): F[Option[StoredApplication]] = {
-    val lock = rwLock.readLock()
-    try {
-      lock.lock()
-      applicationsByName.get(name).pure
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  def get(id: Long): F[Option[StoredApplication]] = {
-    val lock = rwLock.readLock()
-    try {
-      lock.lock()
-      applicationsById.get(id).pure
-    } finally {
-      lock.unlock()
-    }
-  }
-
-  def update(apps: Seq[StoredApplication], version: String): F[String] = {
-    val lock = rwLock.writeLock()
-    try {
-      lock.lock()
-      updateStorageInNames(apps)
-      updateStorageInIds(apps)
-      currentVersion = version
-    } finally {
-      lock.unlock()
-    }
-    version.pure
-  }
-
-  private def updateStorageInIds(apps: Seq[StoredApplication]): Unit = {
-    val toRemove = applicationsById.keySet -- apps.map(_.id).toSet
-    toRemove.foreach(applicationsById.remove)
-    apps.foreach { app =>
-      applicationsById.put(app.id, app)
-    }
-  }
-
-  private def updateStorageInNames(apps: Seq[StoredApplication]): Unit = {
-    val toRemove = applicationsByName.keySet -- apps.map(_.name).toSet
-    toRemove.foreach(applicationsByName.remove)
-    apps.foreach { app =>
-      applicationsByName.put(app.name, app)
-    }
-  }
-
+  
 }

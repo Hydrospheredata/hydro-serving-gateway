@@ -1,68 +1,86 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
+import akka.actor.ActorSystem
+import cats.data.NonEmptyList
+import cats.implicits._
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.manager.grpc.applications.Application
+import io.hydrosphere.serving.manager.grpc.entities.{ModelVersion, Servable, ServingApp, Stage}
 
-import scala.util.Try
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
+
+case class StoredService(
+  host: String,
+  port: Int,
+  weight: Int,
+  modelVersion: ModelVersion
+)
 
 case class StoredStage(
   id: String,
-  services: Seq[StoredService],
-  signature: Option[ModelSignature],
+  services: NonEmptyList[StoredService],
+  signature: ModelSignature,
+  client: PredictDownstream
 )
-
-case class StoredService(
-  modelVersionId: Long,
-  weight: Int
-)
-
-
-case class StoredExecutionGraph(
-  stages: Seq[StoredStage]
-)
-
 
 case class StoredApplication(
-  id: Long,
+  id: String,
   name: String,
   namespace: Option[String],
   contract: ModelContract,
-  executionGraph: StoredExecutionGraph
-)
+  stages: Seq[StoredStage]
+) {
+  
+  def close(): Future[Unit] = {
+    val closes = stages.map(_.client.close())
+    Future.sequence(closes).map(_ => ())
+  }
+}
 
 object StoredApplication {
-  // NOTE warnings missing fields?
-  def fromProto(app: Application) = Try {
-    val executionGraph = app.executionGraph.map { execGraph =>
-      StoredExecutionGraph(
-        stages = execGraph.stages.map { stage =>
-          StoredStage(
-            id = stage.stageId,
-            signature = stage.signature,
-            services = stage.services.map { service =>
-              StoredService(
-                modelVersionId = service.modelVersion.map(_.id).getOrElse(throw new IllegalArgumentException("ExecutionService cannot be without modelVersionId")),
-                weight = service.weight
-              )
-            }.toList
-          )
-        }.toList
+  
+  def create(app: ServingApp, deadline: Duration, sys: ActorSystem): Either[String, StoredApplication] = {
+    val out = for {
+      contract <- app.contract.toValid("Contract field is required").toEither
+      stages   <- app.pipeline.toList.traverse(s => createStage(s, deadline, sys))
+    } yield {
+      StoredApplication(
+        id = app.id,
+        name = app.name,
+        namespace = None,
+        contract = contract,
+        stages = stages
       )
     }
-
-    val namespace = if (app.namespace.isEmpty) {
-      None
-    } else {
-      Some(app.namespace)
-    }
-
-    StoredApplication(
-      id = app.id,
-      name = app.name,
-      namespace = namespace,
-      contract = app.contract.getOrElse(throw new IllegalArgumentException("Application cannot be without modelContract")),
-      executionGraph = executionGraph.getOrElse(throw new IllegalArgumentException("Application cannot be without executionGraph"))
-    )
+    out.leftMap(s => s"Invalid app: ${app.id}, ${app.name}. $s")
   }
+  
+  private def createStage(stage: Stage, deadline: Duration, sys: ActorSystem): Either[String, StoredStage] = {
+    def toService(servable: Servable): Option[StoredService] = {
+      servable.modelVersion.map { mv =>
+        StoredService(
+          host = servable.host,
+          port = servable.port,
+          weight = servable.weight,
+          modelVersion = mv
+        )
+      }
+    }
+    
+    (stage.signature, NonEmptyList.fromList(stage.servable.toList)) match {
+      case (Some(sig), Some(srvbls)) =>
+        val res = srvbls.map(toService)
+        if (res.exists(_.isEmpty)) {
+          s"Invalid stage ${stage.stageId}. No model information in servables $srvbls".asLeft
+        } else {
+          val downstream = PredictDownstream.create(srvbls, deadline, sys)
+          StoredStage(stage.stageId, res.map(_.get), sig, downstream).asRight
+        }
+      case (x, y)=>
+        s"Invalid stage ${stage.stageId}. Signature field: $x. Servables: $y".asLeft
+    }
+  }
+  
 }

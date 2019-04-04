@@ -42,10 +42,10 @@ class GrpcPredictionServiceImpl[F[_]: Effect](
     }
   }
 
-  override def status(request: Empty): Future[StatusResponse] = Future.successful {
+  override def status(request: Empty): Future[StatusResponse] = Future.successful(
     StatusResponse(
       status = StatusResponse.ServiceStatus.SERVING,
-      message = "Gateway is ready."
+      message = "I'm ready"
     )
-  }
+  )
 }

@@ -6,8 +6,7 @@ object Dependencies {
 
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "2.0.0-rc7dev1"
-  val envoyDataPlaneApi = "2.0.0"
+  val servingGrpcScala = "2.0.0"
 
   val catsEffectVersion = "1.2.0"
 
@@ -28,7 +27,6 @@ object Dependencies {
     "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
     "io.hydrosphere" %% "serving-grpc-scala" % servingGrpcScala,
     "io.grpc" % "grpc-netty" % scalapb.compiler.Version.grpcJavaVersion,
-    "io.hydrosphere" %% "envoy-data-plane-api" % envoyDataPlaneApi
   ).map(m => m.exclude("com.google.api.grpc", "googleapis-common-protos"))
 
   lazy val testDependencies = Seq(
