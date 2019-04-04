@@ -1,7 +1,8 @@
 def repository = 'hydro-serving-gateway'
 
 def buildFunction={
-    sh "sbt test docker:publishLocal"
+    sh "sbt test"
+    sh "sbt docker"
 }
 
 def collectTestResults = {
