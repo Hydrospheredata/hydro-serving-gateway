@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, Timers}
 import cats.effect.IO
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchReq, WatchResp}
+import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchResp}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher.{Connect, ConnectionFailed}
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}

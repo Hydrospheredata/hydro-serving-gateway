@@ -6,7 +6,7 @@ import cats.syntax.either._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import io.hydrosphere.serving.gateway.config.ReqStoreConfig
-import io.hydrosphere.serving.monitoring.monitoring.TraceData
+import io.hydrosphere.serving.monitoring.metadata.TraceData
 import org.apache.logging.log4j.scala.Logging
 
 trait ReqStore[F[_], A] {

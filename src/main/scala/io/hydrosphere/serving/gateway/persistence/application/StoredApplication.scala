@@ -71,12 +71,12 @@ object StoredApplication {
     
     (stage.signature, NonEmptyList.fromList(stage.servable.toList)) match {
       case (Some(sig), Some(srvbls)) =>
-        val res = srvbls.map(toService)
-        if (res.exists(_.isEmpty)) {
-          s"Invalid stage ${stage.stageId}. No model information in servables $srvbls".asLeft
-        } else {
-          val downstream = PredictDownstream.create(srvbls, deadline, sys)
-          StoredStage(stage.stageId, res.map(_.get), sig, downstream).asRight
+        srvbls.traverse(toService) match {
+          case Some(services) =>
+            val downstream = PredictDownstream.create(srvbls, deadline, sys)
+            StoredStage(stage.stageId, services, sig, downstream).asRight
+          case None =>
+            s"Invalid stage ${stage.stageId}. No model information in servables $srvbls".asLeft
         }
       case (x, y)=>
         s"Invalid stage ${stage.stageId}. Signature field: $x. Servables: $y".asLeft
