@@ -73,7 +73,7 @@ object StoredApplication {
       case (Some(sig), Some(srvbls)) =>
         srvbls.traverse(toService) match {
           case Some(services) =>
-            val downstream = PredictDownstream.create(srvbls, deadline, sys)
+            val downstream = PredictDownstream.create(services, deadline, sys)
             StoredStage(stage.stageId, services, sig, downstream).asRight
           case None =>
             s"Invalid stage ${stage.stageId}. No model information in servables $srvbls".asLeft

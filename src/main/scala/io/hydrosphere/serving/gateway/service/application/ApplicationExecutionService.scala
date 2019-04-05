@@ -7,14 +7,12 @@ import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
-import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication, StoredStage}
 import io.hydrosphere.serving.model.api.TensorUtil
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, PredictDownstream, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionServiceStub
 import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
 import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
@@ -129,7 +127,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
-      result <- serveApplication(app, request, tracingInfo)
+      result <- serveApplication(app, request)
     } yield responseToJsObject(result)
   }
 

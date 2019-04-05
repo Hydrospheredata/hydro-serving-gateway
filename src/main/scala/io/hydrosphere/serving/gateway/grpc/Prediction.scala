@@ -76,7 +76,7 @@ object Prediction extends Logging {
     if (conf.application.reqstore.enabled) {
       ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore).map(_.some)
     } else {
-      None.pure
+      F.pure(None)
     }
   }
   

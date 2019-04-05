@@ -12,29 +12,16 @@ class JsonPredictionController[F[_]: Effect](
   applicationExecutionService: ApplicationExecutionService[F]
 ) extends JsonProtocols with Logging {
 
-  def optionalTracingHeaders = optionalHeaderValueByName(TracingHeaders.xRequestId) &
-    optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
-    optionalHeaderValueByName(TracingHeaders.xB3SpanId)
-
   def compatibleServeById = path("api" / "v1" / "applications" / "serve" / LongNumber / Segment) { (appId, _) =>
     post {
-      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
-        entity(as[JsObject]) { bytes =>
-          complete {
-            logger.info(s"Serve request: id=$appId")
-            val request = JsonServeByIdRequest(
-              targetId = appId,
-              inputs = bytes
-            )
-            val maybeTracingInfo = reqId.map(xRequestId =>
-              RequestTracingInfo(
-                xRequestId = xRequestId,
-                xB3requestId = reqB3Id,
-                xB3SpanId = reqB3SpanId
-              )
-            )
-            applicationExecutionService.serveJsonById(request, maybeTracingInfo).toIO.unsafeToFuture()
-          }
+      entity(as[JsObject]) { bytes =>
+        complete {
+          logger.info(s"Serve request: id=$appId")
+          val request = JsonServeByIdRequest(
+            targetId = appId,
+            inputs = bytes
+          )
+          applicationExecutionService.serveJsonById(request).toIO.unsafeToFuture()
         }
       }
     }
@@ -50,23 +37,14 @@ class JsonPredictionController[F[_]: Effect](
 
   def serveByName = pathPrefix("application" / Segment) { (appName) =>
     post {
-      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
-        entity(as[JsObject]) { jsObject =>
-          complete {
-            logger.info(s"Serve request: name=$appName")
-            val request = JsonServeByNameRequest(
-              appName = appName,
-              inputs = jsObject
-            )
-            val maybeTracingInfo = reqId.map(xRequestId =>
-              RequestTracingInfo(
-                xRequestId = xRequestId,
-                xB3requestId = reqB3Id,
-                xB3SpanId = reqB3SpanId
-              )
-            )
-            applicationExecutionService.serveJsonByName(request, maybeTracingInfo).toIO.unsafeToFuture()
-          }
+      entity(as[JsObject]) { jsObject =>
+        complete {
+          logger.info(s"Serve request: name=$appName")
+          val request = JsonServeByNameRequest(
+            appName = appName,
+            inputs = jsObject
+          )
+          applicationExecutionService.serveJsonByName(request).toIO.unsafeToFuture()
         }
       }
     }
