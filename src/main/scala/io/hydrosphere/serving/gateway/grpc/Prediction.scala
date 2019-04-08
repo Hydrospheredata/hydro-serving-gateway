@@ -1,15 +1,19 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import cats.effect._
 import cats.implicits._
+import cats.effect._
+import cats.effect.implicits._
 import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
+import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.metadata.{ExecutionError, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import org.apache.logging.log4j.scala.Logging
+
+import scala.concurrent.duration._
 
 trait Prediction[F[_]] {
 
@@ -21,7 +25,7 @@ object Prediction extends Logging {
 
   type ServingReqStore[F[_]] = ReqStore[F, (PredictRequest, ResponseOrError)]
 
-  def create[F[_]](conf: Configuration)(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
+  def create[F[_]](conf: Configuration)(implicit F: ConcurrentEffect[F], timer: Timer[F]): F[Prediction[F]] = {
     for {
       maybeReqStore   <- mkReqStore(conf)
       maybeMonitoring =  mkMonitoring(conf)
@@ -33,7 +37,9 @@ object Prediction extends Logging {
       
       val saveF: (String, PredictRequest, ResponseOrError) => F[Option[TraceData]] = maybeReqStore match {
         case Some(reqstore) =>
-          (id: String, req: PredictRequest, resp: ResponseOrError) => reqstore.save(id, (req, resp)).attempt.map(_.toOption)
+          val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)
+          (id: String, req: PredictRequest, resp: ResponseOrError) =>
+            cb.use(reqstore.save(id, (req, resp)).attempt.map(_.toOption))
         case None =>
           (id: String, req: PredictRequest, resp: ResponseOrError) => F.pure(None)
       }
@@ -57,7 +63,7 @@ object Prediction extends Logging {
             respOrErr =  Pbf.responseOrError(out.result)
             traceData <- saveF(out.modelVersionId.toString, req, respOrErr)
             execMeta  =  Pbf.execMeta(unit.meta, out.modelVersionId, traceData)
-            _         <- monitoringF(req, respOrErr, execMeta)
+            _         <- monitoringF(req, respOrErr, execMeta).start
           } yield {
             (out.result, traceData) match {
               case (Right(resp), Some(data)) => Right(resp.withTraceData(data))
@@ -74,7 +80,8 @@ object Prediction extends Logging {
   
   private def mkReqStore[F[_]](conf: Configuration)(implicit F: Concurrent[F]): F[Option[ServingReqStore[F]]] = {
     if (conf.application.reqstore.enabled) {
-      ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore).map(_.some)
+      ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore)
+        .map(_.some)
     } else {
       F.pure(None)
     }

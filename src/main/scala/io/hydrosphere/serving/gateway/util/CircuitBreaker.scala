@@ -1,0 +1,89 @@
+package io.hydrosphere.serving.gateway.util
+
+import cats.effect.concurrent.Ref
+import cats.effect.implicits._
+import cats.effect.{Concurrent, Sync, Timer}
+import cats.implicits._
+
+import scala.concurrent.duration.FiniteDuration
+
+trait CircuitBreaker[F[_]] {
+  def use[A](f: => F[A]): F[A]
+}
+
+object CircuitBreaker {
+  
+  def apply[F[_]](
+    callTimeout: FiniteDuration,
+    maxErrors: Int,
+    resetTimeout: FiniteDuration,
+  )(implicit F: Concurrent[F], timer: Timer[F]): CircuitBreaker[F] = {
+  
+    new CircuitBreaker[F] {
+      
+      private val stateRef: Ref[F, State[F]] = Ref.unsafe(State.Closed(Ref.unsafe(0)))
+      private def err = new Exception("Circuit breaker is open")
+      
+      override def use[A](f: => F[A]): F[A] = {
+        stateRef.get.flatMap({
+          case State.Closed(errors) => callClosed(f, errors)
+          case State.HalfOpen(tried) =>
+            tried.get.flatMap({
+              case true => F.raiseError(err)
+              case false => tried.tryUpdate(_ => true).ifM(callHalfOpen(f), F.raiseError(err))
+            })
+          case State.Open() => F.raiseError(new Exception("Circuit breaker is open"))
+        })
+      }
+  
+      private def callClosed[A](f: => F[A], errors: Ref[F, Int]): F[A] = callAnd(f)(errors.set(0))(onClosedErr)
+      private def callHalfOpen[A](f: => F[A]): F[A] = callAnd(f)(toClosed)(toOpen)
+      
+      private def onClosedErr: F[Unit] = {
+        for {
+          curr <- stateRef.get
+          _    <- curr match {
+            case State.Closed(errors) =>
+              errors.modify(i => {
+                val next = i + 1
+                (next, next)
+              }).flatMap(i => if (i >= maxErrors) toOpen else F.pure(()))
+            case _ => F.pure(())
+          }
+        } yield ()
+      }
+      
+      private def toClosed: F[Unit] = stateRef.set(State.freshClosed)
+      
+      private def toOpen: F[Unit] = {
+         stateRef.tryUpdate(_ => State.Open()).ifM(scheduleTimeout, F.pure(()))
+      }
+      
+      private def scheduleTimeout: F[Unit] = {
+        val reset = timer.sleep(resetTimeout) >> stateRef.set(State.freshHalfOpen)
+        reset.start.void
+      }
+      
+      private def callAnd[A](f: => F[A])(onSucc: => F[Unit])(onErr: => F[Unit]): F[A] = {
+        f.timeout(callTimeout)
+          .attempt
+          .flatTap({
+            case Left(e) => onErr
+            case Right(_) => onSucc
+          })
+          .rethrow
+      }
+    }
+  }
+  
+  sealed trait State[F[_]]
+  object State {
+    final case class Open[F[_]]() extends State[F]
+    final case class HalfOpen[F[_]](tried: Ref[F, Boolean]) extends State[F]
+    final case class Closed[F[_]](errors: Ref[F, Int]) extends State[F]
+    
+    def freshClosed[F[_]: Sync]: Closed[F] = Closed[F](Ref.unsafe[F, Int](0))
+    def freshHalfOpen[F[_]: Sync]: HalfOpen[F] = HalfOpen[F](Ref.unsafe[F, Boolean](false))
+  }
+}
+
