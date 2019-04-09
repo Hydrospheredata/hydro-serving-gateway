@@ -11,11 +11,11 @@ import scala.concurrent.ExecutionContext
 
 
 trait ApplicationExecutionService[F[_]] {
-  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
+  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest): F[JsValue]
 
-  def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
+  def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue]
 
-  def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse]
+  def serveGrpcApplication(data: PredictRequest): F[PredictResponse]
 
   def listApps: F[Seq[StoredApplication]]
 }

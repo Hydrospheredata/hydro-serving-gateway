@@ -1,15 +1,17 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
+import cats._
+import cats.data.NonEmptyList
+import cats.implicits._
 import java.util.concurrent.TimeUnit
 
 import akka.actor.{Actor, ActorSystem, PoisonPill, Props}
-import cats.data.NonEmptyList
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
-import io.hydrosphere.serving.manager.grpc.entities.{ModelVersion, Servable}
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
-import io.hydrosphere.serving.tensorflow.tensor.Int64Tensor
+import io.hydrosphere.serving.tensorflow.tensor.{Int64Tensor, TensorProto}
+import io.hydrosphere.serving.tensorflow.types.DataType
 
 import scala.collection.immutable.TreeMap
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -17,8 +19,14 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Future, Promise}
 import scala.util.Random
 
+final case class PredictOut(
+  result: Either[Throwable, PredictResponse],
+  latency: Long,
+  modelVersionId: Long
+)
+
 trait PredictDownstream {
-  def send(req: PredictRequest): Future[PredictResponse]
+  def send(req: PredictRequest): Future[PredictOut]
   def close(): Future[Unit]
 }
 
@@ -26,20 +34,20 @@ object PredictDownstream {
   
   type GRPCStub = PredictionServiceGrpc.PredictionServiceStub
   
-  def create(servables: NonEmptyList[Servable], deadline: Duration, sys: ActorSystem): PredictDownstream = {
+  def create(servables: NonEmptyList[StoredService], deadline: Duration, sys: ActorSystem): PredictDownstream = {
     if (servables.length == 1) {
       val s = servables.head
-      single(s.host, s.port, s.modelVersion.getOrElse(throw new IllegalArgumentException(s"Servable without model version! $s")), deadline)
+      single(s, deadline)
     } else {
       balanced(servables, deadline, sys)
     }
   }
   
-  def single(host: String, port: Int, modelVersion: ModelVersion, deadline: Duration): PredictDownstream = {
-    val stubAndChannel = mkStubAndChannel(host, port, deadline, modelVersion)
+  def single(service: StoredService, deadline: Duration): PredictDownstream = {
+    val stubAndChannel = mkStubAndChannel(service, deadline)
     
     new PredictDownstream {
-      override def send(req: PredictRequest): Future[PredictResponse] =
+      override def send(req: PredictRequest): Future[PredictOut] =
         stubAndChannel.call(req)
   
       override def close(): Future[Unit] = stubAndChannel.close()
@@ -47,25 +55,17 @@ object PredictDownstream {
   }
   
   
-  def balanced(servables: NonEmptyList[Servable], deadline: Duration, sys: ActorSystem): PredictDownstream = {
+  def balanced(servables: NonEmptyList[StoredService], deadline: Duration, sys: ActorSystem): PredictDownstream = {
     
-    val weightedServices = servables.map(s => {
-      val sac = mkStubAndChannel(
-        s.host,
-        s.port,
-        deadline,
-        s.modelVersion.getOrElse(throw new IllegalArgumentException(s"Servable without model version! $s"))
-      )
-      s.weight -> sac
-    }).toList.toMap
+    val weightedServices = servables.map(s => s.weight -> mkStubAndChannel(s, deadline)).toList.toMap
     
     val distributor = Distributor.weighted(weightedServices)
     
     val balancer = sys.actorOf(BalancedDownstream.props(distributor))
     new PredictDownstream {
       
-      override def send(req: PredictRequest): Future[PredictResponse] = {
-        val ps = Promise[PredictResponse]
+      override def send(req: PredictRequest): Future[PredictOut] = {
+        val ps = Promise[PredictOut]
         balancer ! BalancedDownstream.Send(req, ps)
         ps.future
       }
@@ -82,16 +82,25 @@ object PredictDownstream {
     stub: GRPCStub,
     deadline: Duration,
     channel: ManagedChannel,
-    modelVersion: ModelVersion
-  ) {
+    modelVersionId: Long){
     
-    def call(req: PredictRequest): Future[PredictResponse] =
-      stub.withDeadlineAfter(deadline.length, deadline.unit)
-        .predict(req)
-        .map { res =>
-          val newInfo = res.internalInfo + ("modelVersionId" -> Int64Tensor(TensorShape.scalar, Seq(modelVersion.id)).toProto)
-          res.copy(internalInfo = newInfo)
-        }
+    def call(req: PredictRequest): Future[PredictOut] = {
+      for {
+        start  <- Future.successful(TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS))
+        result <- stub.withDeadlineAfter(deadline.length, deadline.unit).predict(req).attempt
+      } yield  {
+        val end = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS)
+        val latency = end - start
+        val withInternalInfo = result.map(resp => {
+          val info = List(
+            "system.latency" -> Int64Tensor(TensorShape.scalar, Seq(latency)).toProto,
+            "modelVersionId" -> Int64Tensor(TensorShape.scalar, Seq(modelVersionId)).toProto
+          )
+          resp.addAllInternalInfo(info)
+        })
+        PredictOut(withInternalInfo, latency, modelVersionId)
+      }
+    }
     
     def close(): Future[Unit] = Future {
       channel.shutdown()
@@ -101,7 +110,11 @@ object PredictDownstream {
     
   }
   
-  def mkStubAndChannel(host: String, port: Int, deadline: Duration, modelVersion: ModelVersion): StubAndChannel = {
+  def mkStubAndChannel(service: StoredService, deadline: Duration): StubAndChannel = {
+    mkStubAndChannel(service.host, service.port, service.modelVersion.id, deadline)
+  }
+  
+  def mkStubAndChannel(host: String, port: Int, modelVersionId: Long, deadline: Duration): StubAndChannel = {
     val builder = ManagedChannelBuilder
       .forAddress(host, port)
     
@@ -110,7 +123,7 @@ object PredictDownstream {
     
     val channel = builder.build()
     val stub = PredictionServiceGrpc.stub(channel)
-    new StubAndChannel(stub, deadline, channel, modelVersion)
+    new StubAndChannel(stub, deadline, channel, modelVersionId)
   }
   
   
@@ -158,7 +171,7 @@ object PredictDownstream {
   }
   
   object BalancedDownstream {
-    case class Send(req: PredictRequest, p: Promise[PredictResponse])
+    case class Send(req: PredictRequest, p: Promise[PredictOut])
     def props(distributor: Distributor[StubAndChannel]): Props = Props(classOf[BalancedDownstream], distributor)
   }
  

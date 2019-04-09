@@ -38,7 +38,6 @@ class DiscoveryWatcher[F[_]: Effect](
   }
 
   override def aroundPreStart(): Unit = self ! Connect
-
   override def receive: Receive = disconnected
 
 
@@ -88,7 +87,6 @@ class DiscoveryWatcher[F[_]: Effect](
     upd.toIO.unsafeRunSync()
 
   }
-
   private def connect(): StreamObserver[Empty] = {
     val observer = new StreamObserver[WatchResp] {
       override def onError(e: Throwable): Unit = {
@@ -110,7 +108,6 @@ class DiscoveryWatcher[F[_]: Effect](
     log.error(reason, "Restarting due to [{}] when processing [{}]",
       reason.getMessage, message.getOrElse(""))
   }
-
 }
 
 object DiscoveryWatcher {
