@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.grpc
 import cats.implicits._
 import cats.effect._
 import cats.effect.implicits._
-import io.hydrosphere.serving.gateway.config.Configuration
+import io.hydrosphere.serving.gateway.config.{Configuration, ReqStoreConfig}
 import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
@@ -37,7 +37,8 @@ object Prediction extends Logging {
       
       val saveF: (String, PredictRequest, ResponseOrError) => F[Option[TraceData]] = maybeReqStore match {
         case Some(reqstore) =>
-          val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)
+          val listener = (st: CircuitBreaker.Status) => F.delay(logger.info(s"Restore circuit breaker status was changed: $st"))
+          val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)(listener)
           (id: String, req: PredictRequest, resp: ResponseOrError) =>
             cb.use(reqstore.save(id, (req, resp)).attempt.map(_.toOption))
         case None =>
