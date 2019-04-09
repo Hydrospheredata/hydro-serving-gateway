@@ -7,14 +7,12 @@ import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.grpc.Prediction
-import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication, StoredStage}
 import io.hydrosphere.serving.model.api.TensorUtil
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, PredictDownstream, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionServiceStub
 import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
 import org.apache.logging.log4j.scala.Logging
 import spray.json.{JsObject, JsValue}
@@ -24,11 +22,11 @@ import scala.util.{Failure, Success, Try}
 
 
 trait ApplicationExecutionService[F[_]] {
-  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
+  def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest): F[JsValue]
 
-  def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue]
+  def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue]
 
-  def serveGrpcApplication(data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse]
+  def serveGrpcApplication(data: PredictRequest): F[PredictResponse]
 
   def listApps: F[Seq[StoredApplication]]
 }
@@ -41,7 +39,6 @@ case class ExecutionUnit(
 case class ExecutionMeta(
   serviceName: String,
   servicePath: String,
-  modelVersionId: Long,
   applicationRequestId: Option[String],
   signatureName: String,
   applicationId: Long,
@@ -73,15 +70,12 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     } yield app
   }
 
-  override def serveGrpcApplication(
-    data: PredictRequest,
-    tracingInfo: Option[RequestTracingInfo]
-  ): F[PredictResponse] = {
+  override def serveGrpcApplication(data: PredictRequest): F[PredictResponse] = {
     data.modelSpec match {
       case Some(modelSpec) =>
         for {
           app <- getApp(modelSpec.name)
-          result <- serveApplication(app, data, tracingInfo)
+          result <- serveApplication(app, data)
         } yield result
       case None =>
         Sync[F].raiseError(GatewayError.InvalidArgument("ModelSpec is not defined"))
@@ -111,7 +105,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     }
   }
 
-  override def serveJsonById(jsonServeRequest: JsonServeByIdRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
+  override def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue] = {
     for {
       app <- getApp(jsonServeRequest.targetId)
       signature <- Sync[F].fromOption(
@@ -120,11 +114,11 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       )
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
-      result <- serveApplication(app, request, tracingInfo)
+      result <- serveApplication(app, request)
     } yield responseToJsObject(result)
   }
 
-  override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest, tracingInfo: Option[RequestTracingInfo]): F[JsValue] = {
+  override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest): F[JsValue] = {
     for {
       app <- getApp(jsonServeByNameRequest.appName)
       signature <- Sync[F].fromOption(
@@ -133,7 +127,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
-      result <- serveApplication(app, request, tracingInfo)
+      result <- serveApplication(app, request)
     } yield responseToJsObject(result)
   }
 
@@ -163,7 +157,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     }
   }
 
-  def predictConsecutiveUnits(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
+  def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest): F[PredictResponse] = {
     //TODO Add request id for step
     val empty = Applicative[F].pure(PredictResponse(outputs = data.inputs))
     units.foldLeft(empty) {
@@ -173,41 +167,25 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
             modelSpec = ModelSpec(signatureName = current.meta.servicePath).some,
             inputs = res.outputs
           )
-          prediction.predict(current, request, tracingInfo).map(_.response)
-        }
-    }
-  }
-
-  def servePipeline(units: Seq[ExecutionUnit], data: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
-    //TODO Add request id for step
-    val empty = Applicative[F].pure(PredictResponse(outputs = data.inputs))
-    units.foldLeft(empty) {
-      case (previous, current) =>
-        previous.flatMap { res =>
-          val request = PredictRequest(
-            modelSpec = ModelSpec(signatureName = current.meta.servicePath).some,
-            inputs = res.outputs
-          )
-          prediction.predict(current, request, tracingInfo).map(_.response)
+          prediction.predict(current, request)
         }
     }
   }
   
-  def serveApplication(application: StoredApplication, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): F[PredictResponse] = {
+  def serveApplication(application: StoredApplication, request: PredictRequest): F[PredictResponse] = {
     val units = application.stages.map(stage => {
       val meta = ExecutionMeta(
         serviceName = stage.id,
         servicePath = stage.signature.signatureName,
-        applicationRequestId = tracingInfo.map(_.xRequestId), // TODO get real traceId
-        applicationId = application.id.toLong, // TODO
+        applicationRequestId = None,
+        applicationId = application.id.toLong,
         signatureName = stage.signature.signatureName,
         stageId = stage.id,
         applicationNamespace = application.namespace,
-        modelVersionId = stage.services.map(_.modelVersion.id).head // FIXME ubrat eto ebuchee govno otsuda
       )
       ExecutionUnit(stage.client, meta)
     })
-    servePipeline(units, request, tracingInfo)
+    servePipeline(units, request)
   }
 
   private def responseToJsObject(rr: PredictResponse): JsObject = {

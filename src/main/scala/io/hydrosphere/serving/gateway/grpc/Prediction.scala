@@ -1,95 +1,125 @@
 package io.hydrosphere.serving.gateway.grpc
 
-import cats._
-import cats.effect._
 import cats.implicits._
+import cats.effect._
+import cats.effect.implicits._
 import io.hydrosphere.serving.gateway.config.Configuration
-import io.hydrosphere.serving.gateway.service.application.{ExecutionUnit, RequestTracingInfo}
-import io.hydrosphere.serving.tensorflow.TensorShape
-import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
-import io.hydrosphere.serving.tensorflow.tensor.TensorProto
-import io.hydrosphere.serving.tensorflow.types.DataType
+import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
+import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
+import io.hydrosphere.serving.gateway.util.CircuitBreaker
+import io.hydrosphere.serving.monitoring.api.ExecutionInformation
+import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
+import io.hydrosphere.serving.monitoring.metadata.{ExecutionError, ExecutionMetadata, TraceData}
+import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import org.apache.logging.log4j.scala.Logging
 
-import scala.concurrent.duration.{Duration, MILLISECONDS}
-import scala.util.Try
-
+import scala.concurrent.duration._
 
 trait Prediction[F[_]] {
 
-  def predict(
-    unit: ExecutionUnit,
-    request: PredictRequest,
-    tracingInfo: Option[RequestTracingInfo]
-  ): F[PredictionWithMetadata]
+  def predict(unit: ExecutionUnit, request: PredictRequest): F[PredictResponse]
 
 }
 
-//TODO: tracingInfo doesn't work
-//TODO: remove or integrate open-tracing
 object Prediction extends Logging {
 
-  type PredictionStub = PredictionServiceGrpc.PredictionServiceStub
-  type PredictFunc[F[_]] = (ExecutionUnit, PredictRequest, Option[RequestTracingInfo]) => F[PredictionWithMetadata]
+  type ServingReqStore[F[_]] = ReqStore[F, (PredictRequest, ResponseOrError)]
 
-  def create[F[_]](conf: Configuration)(implicit F: Concurrent[F], cs: ContextShift[F]): F[Prediction[F]] = {
-    val predictF = predictWithLatency(Clock.create[F])
-    val mkReporting = if (conf.application.shadowingOn) {
-      Reporting.default[F](conf)
+  def create[F[_]](conf: Configuration)(implicit F: ConcurrentEffect[F], timer: Timer[F]): F[Prediction[F]] = {
+    for {
+      maybeReqStore   <- mkReqStore(conf)
+      maybeMonitoring =  mkMonitoring(conf)
+    } yield {
+      
+      val predictF = (eu: ExecutionUnit, req: PredictRequest) => {
+        F.liftIO(IO.fromFuture(IO(eu.client.send(req))))
+      }
+      
+      val saveF: (String, PredictRequest, ResponseOrError) => F[Option[TraceData]] = maybeReqStore match {
+        case Some(reqstore) =>
+          val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)
+          (id: String, req: PredictRequest, resp: ResponseOrError) =>
+            cb.use(reqstore.save(id, (req, resp)).attempt.map(_.toOption))
+        case None =>
+          (id: String, req: PredictRequest, resp: ResponseOrError) => F.pure(None)
+      }
+      
+      val monitoringF = maybeMonitoring match {
+        case Some(monitoring) =>
+          (req: PredictRequest, resp: ResponseOrError, meta: ExecutionMetadata) => {
+            val info = ExecutionInformation(req.some, meta.some, resp)
+            monitoring.send(info).attempt.void
+          }
+        case None =>
+          (_: PredictRequest, _: ResponseOrError, _: ExecutionMetadata) => {
+            F.pure(())
+          }
+      }
+      
+      new Prediction[F] {
+        override def predict(unit: ExecutionUnit, req: PredictRequest): F[PredictResponse] = {
+          val flow = for {
+            out       <- predictF(unit, req)
+            respOrErr =  Pbf.responseOrError(out.result)
+            traceData <- saveF(out.modelVersionId.toString, req, respOrErr)
+            execMeta  =  Pbf.execMeta(unit.meta, out.modelVersionId, traceData)
+            _         <- monitoringF(req, respOrErr, execMeta).start
+          } yield {
+            (out.result, traceData) match {
+              case (Right(resp), Some(data)) => Right(resp.withTraceData(data))
+              case _ => out.result
+            }
+          }
+          
+          flow.rethrow
+        }
+      }
+      
+    }
+  }
+  
+  private def mkReqStore[F[_]](conf: Configuration)(implicit F: Concurrent[F]): F[Option[ServingReqStore[F]]] = {
+    if (conf.application.reqstore.enabled) {
+      ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore)
+        .map(_.some)
     } else {
-      F.pure(Reporting.noop[F])
+      F.pure(None)
     }
-    mkReporting map  (create0(predictF, _))
   }
-
-  def create0[F[_]](exec: PredictFunc[F], reporting: Reporting[F])(
-    implicit F: MonadError[F, Throwable]): Prediction[F] = {
-
-    new Prediction[F] {
-
-      def predict(
-        eu: ExecutionUnit,
-        req: PredictRequest,
-        tracingInfo: Option[RequestTracingInfo]
-      ): F[PredictionWithMetadata] = {
-
-        exec(eu, req, tracingInfo)
-          .attempt
-          .flatTap(out => reporting.report(req, eu.meta.copy(modelVersionId = out.toOption.flatMap(_.modelVersionId).getOrElse(-1)), out))
-          .rethrow
+  
+  private def mkMonitoring[F[_]](conf: Configuration)(implicit F: Async[F]): Option[Monitoring[F]] = {
+    if (conf.application.shadowingOn) {
+      Monitoring.default(conf.application.apiGateway, conf.application.grpc.deadline).some
+    } else {
+      None
+    }
+  }
+  
+  private object Pbf {
+  
+    def execMeta(
+      meta: ExecutionMeta,
+      modelVersionId: Long,
+      traceData: Option[TraceData]
+    ): ExecutionMetadata = {
+      ExecutionMetadata(
+        applicationId = meta.applicationId,
+        stageId = meta.stageId,
+        modelVersionId = modelVersionId,
+        signatureName = meta.signatureName,
+        applicationRequestId = meta.applicationRequestId.getOrElse(""),
+        requestId = meta.applicationRequestId.getOrElse(""),
+        applicationNamespace = meta.applicationNamespace.getOrElse(""),
+        traceData = traceData
+      )
+    }
+  
+    def responseOrError(poe: Either[Throwable, PredictResponse]): ResponseOrError = {
+      poe match {
+        case Left(err) => ResponseOrError.Error(ExecutionError(err.getMessage))
+        case Right(v) => ResponseOrError.Response(v)
       }
     }
   }
-
-  def predictWithLatency[F[_]](clock: Clock[F])(
-    implicit F: Monad[F], L: LiftIO[F]): PredictFunc[F] = {
-
-    (eu: ExecutionUnit, req: PredictRequest, tracingInfo: Option[RequestTracingInfo]) => {
-
-      for {
-        start <- clock.monotonic(MILLISECONDS)
-        resp  <- L.liftIO(IO.fromFuture(IO(eu.client.send(req))))
-        stop  <- clock.monotonic(MILLISECONDS)
-      } yield {
-         val latency = stop - start
-
-        val resultWithInternalInfo = resp.addInternalInfo(
-          "system.latency" -> TensorProto(
-            dtype = DataType.DT_INT64,
-            int64Val = Seq(latency),
-            tensorShape = TensorShape.scalar.toProto
-          )
-        )
-
-        PredictionWithMetadata(
-          response = resultWithInternalInfo,
-          modelVersionId = resp.internalInfo.get("modelVersionId").flatMap(_.int64Val.headOption),
-          latency = latency.toString.some
-        )
-      }
-    }
-  }
-
 
 }

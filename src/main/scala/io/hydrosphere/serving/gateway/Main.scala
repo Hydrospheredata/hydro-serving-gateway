@@ -17,6 +17,7 @@ import scala.concurrent.{Await, ExecutionContext}
 object Main extends App with Logging {
 
   implicit val contextShift = IO.contextShift(scala.concurrent.ExecutionContext.global)
+  implicit val timer = IO.timer(scala.concurrent.ExecutionContext.global)
 
   logger.info("Hydroserving gateway service")
   try {

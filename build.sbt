@@ -1,7 +1,12 @@
 import sbt._
 import Keys._
 
+name := "hydro-serving-gateway"
+
+scalaVersion := "2.12.6"
+
 lazy val currentAppVersion = sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
+
 
 organization := "io.hydrosphere.serving"
 organizationName := "hydrosphere"
@@ -32,6 +37,10 @@ scalacOptions ++= Seq(
 )
 mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
 
+resolvers += Resolver.bintrayRepo("findify", "maven")
+resolvers += Resolver.bintrayRepo("hseeberger", "maven")
+
+exportJars := false
 resolvers += Resolver.bintrayRepo("findify", "maven")
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 

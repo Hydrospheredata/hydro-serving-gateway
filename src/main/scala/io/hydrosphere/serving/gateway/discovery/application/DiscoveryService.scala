@@ -94,7 +94,6 @@ class DiscoveryWatcher(
     upd.unsafeRunSync()
     
   }
-
   private def connect(): StreamObserver[Empty] = {
     val observer = new StreamObserver[WatchResp] {
       override def onError(e: Throwable): Unit = {

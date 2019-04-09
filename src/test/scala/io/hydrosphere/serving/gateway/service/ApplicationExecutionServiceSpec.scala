@@ -8,9 +8,9 @@ import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.contract.utils.ContractBuilders
 import io.hydrosphere.serving.gateway.GenericTest
-import io.hydrosphere.serving.gateway.grpc.{Prediction, PredictionWithMetadata}
+import io.hydrosphere.serving.gateway.grpc.Prediction
 import io.hydrosphere.serving.gateway.persistence.application._
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionServiceImpl, ExecutionUnit, RequestTracingInfo}
+import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionServiceImpl, ExecutionUnit}
 import io.hydrosphere.serving.manager.grpc.entities.ModelVersion
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -52,8 +52,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
         Seq(ContractBuilders.simpleTensorModelField("a", DataType.DT_STRING, TensorShape.scalar))
       )
       val client = new PredictDownstream {
-        override def send(req: PredictRequest): Future[PredictResponse] = ???
-
+        override def send(req: PredictRequest): Future[PredictOut] = ???
         override def close(): Future[Unit] = ???
       }
       val contract = ModelContract("app", Some(signature))
@@ -66,13 +65,13 @@ class ApplicationExecutionServiceSpec extends GenericTest {
 
         override def listAll: IO[Seq[StoredApplication]] = IO.pure(storedApplications)
 
-        override def addApps(apps: Seq[StoredApplication]): IO[Unit] = IO(storedApplications = storedApplications ++ apps).flatMap(_ => IO.unit)
+        override def addApps(apps: Seq[StoredApplication]): IO[Unit] = IO(storedApplications ++ apps).flatMap(_ => IO.unit)
 
-        override def removeApps(ids: Seq[String]): IO[Unit] = IO(storedApplications = storedApplications.filterNot(ids.contains)).flatMap(_ => IO.unit)
+        override def removeApps(ids: Seq[String]): IO[Unit] = IO(storedApplications.filterNot(ids.contains)).flatMap(_ => IO.unit)
       }
 
       val prediction = new Prediction[IO] {
-        override def predict(unit: ExecutionUnit, request: PredictRequest, tracingInfo: Option[RequestTracingInfo]): IO[PredictionWithMetadata] = {
+        override def predict(unit: ExecutionUnit, request: PredictRequest): IO[PredictResponse] = {
           IO.raiseError(new Exception("Some shit happened"))
         }
       }
@@ -91,7 +90,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
           "noticeMe" -> noticeMe
         )
       )
-      val result = applicationExecutionService.serveGrpcApplication(request, None).unsafeToFuture()
+      val result = applicationExecutionService.serveGrpcApplication(request).unsafeToFuture()
       result.map { _ =>
         fail("I should fail")
       }.failed.map{ x =>
