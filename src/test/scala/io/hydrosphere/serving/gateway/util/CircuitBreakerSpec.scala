@@ -14,7 +14,7 @@ class CircuitBreakerSpec extends FunSpec with Matchers {
   implicit val timer = IO.timer(ExecutionContext.global)
 
   it("less than max errors") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
     val ops = List(
       IO.pure(42),
       IO.raiseError(new Exception),
@@ -27,7 +27,7 @@ class CircuitBreakerSpec extends FunSpec with Matchers {
   }
   
   it("more than max error") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
     val ops = List(
       IO.pure(42),
       IO.raiseError(new Exception),
@@ -41,7 +41,7 @@ class CircuitBreakerSpec extends FunSpec with Matchers {
   }
   
   it("timeout") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
     val ops = List(
       IO.pure(42),
       IO.sleep(2 millis),
@@ -55,7 +55,7 @@ class CircuitBreakerSpec extends FunSpec with Matchers {
   }
   
   it("resets to halfopen") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
     val ops = List(
       IO.pure(42),
       IO.sleep(2 millis),

@@ -4,18 +4,6 @@ import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
-//final case class ManagerConfig(
-//  host: String,
-//  grpcPort: Int,
-//  httpPort: Int,
-//  reconnectTimeout: FiniteDuration
-//)
-//
-//final case class MonitoringConfig(
-//  host: String,
-//  port: Int
-//)
-
 final case class GrpcConfig(
   port: Int,
   deadline: Duration,
@@ -38,15 +26,14 @@ final case class ReqStoreConfig(
   enabled: Boolean,
   host: String,
   port: Int,
+  prefix: String,
   schema: String
 )
 
 final case class ApplicationConfig(
   grpc: GrpcConfig,
-//  manager: ManagerConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
-//  monitoring: MonitoringConfig,
   reqstore: ReqStoreConfig,
   apiGateway: ApiGatewayConfig
 )

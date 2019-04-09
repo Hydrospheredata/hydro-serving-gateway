@@ -13,11 +13,18 @@ trait CircuitBreaker[F[_]] {
 
 object CircuitBreaker {
   
+  sealed trait Status
+  object Status {
+    case object Closed extends Status
+    case object HalfOpen extends Status
+    case object Open extends Status
+  }
+  
   def apply[F[_]](
     callTimeout: FiniteDuration,
     maxErrors: Int,
     resetTimeout: FiniteDuration,
-  )(implicit F: Concurrent[F], timer: Timer[F]): CircuitBreaker[F] = {
+  )(listener: Status => F[Unit])(implicit F: Concurrent[F], timer: Timer[F]): CircuitBreaker[F] = {
   
     new CircuitBreaker[F] {
       
@@ -53,14 +60,14 @@ object CircuitBreaker {
         } yield ()
       }
       
-      private def toClosed: F[Unit] = stateRef.set(State.freshClosed)
+      private def toClosed: F[Unit] = stateRef.set(State.freshClosed) >> notifyListener(Status.Closed)
       
       private def toOpen: F[Unit] = {
-         stateRef.tryUpdate(_ => State.Open()).ifM(scheduleTimeout, F.pure(()))
+         stateRef.tryUpdate(_ => State.Open()).ifM(scheduleTimeout >> notifyListener(Status.Open), F.pure(()))
       }
       
       private def scheduleTimeout: F[Unit] = {
-        val reset = timer.sleep(resetTimeout) >> stateRef.set(State.freshHalfOpen)
+        val reset = timer.sleep(resetTimeout) >> stateRef.set(State.freshHalfOpen) >> notifyListener(Status.HalfOpen)
         reset.start.void
       }
       
@@ -73,6 +80,8 @@ object CircuitBreaker {
           })
           .rethrow
       }
+      
+      private def notifyListener(st: Status): F[Unit] = listener(st).start.void
     }
   }
   
