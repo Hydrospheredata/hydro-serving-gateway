@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration monitorInterval="30" status="WARN">
+<Configuration monitorInterval="30" status="WARN" shutdownHook="disable">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%highlight{%-5level[%t] %d %c{1}.%M.%L}{STYLE=Logback}  %msg%n">
