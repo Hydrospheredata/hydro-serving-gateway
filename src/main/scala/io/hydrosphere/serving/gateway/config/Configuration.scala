@@ -1,5 +1,6 @@
 package io.hydrosphere.serving.gateway.config
 
+import cats.effect.Sync
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
@@ -57,14 +58,11 @@ final case class Configuration(
 
 
 object Configuration extends Logging {
-  def loadOrFail() = {
-    val loadResult = pureconfig.loadConfig[Configuration]
-    loadResult match {
-      case Left(error) =>
-        logger.error(s"Can't load configuration: $error")
-        throw new IllegalArgumentException(error.toList.map(_.description).mkString("\n"))
-      case Right(value) =>
-        value
+  def load[F[_]](implicit F: Sync[F]) = F.defer {
+    F.fromEither {
+      pureconfig.loadConfig[Configuration].left.map { x =>
+        new IllegalArgumentException(x.toList.toString().mkString("\n"))
+      }
     }
   }
 }
