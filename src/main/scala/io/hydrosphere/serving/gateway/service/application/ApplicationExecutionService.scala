@@ -173,19 +173,25 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   }
   
   def serveApplication(application: StoredApplication, request: PredictRequest): F[PredictResponse] = {
-    val units = application.stages.map(stage => {
-      val meta = ExecutionMeta(
-        serviceName = stage.id,
-        servicePath = stage.signature.signatureName,
-        applicationRequestId = None,
-        applicationId = application.id.toLong,
-        signatureName = stage.signature.signatureName,
-        stageId = stage.id,
-        applicationNamespace = application.namespace,
-      )
-      ExecutionUnit(stage.client, meta)
-    })
-    servePipeline(units, request)
+    for {
+      x <- Sync[F].fromEither {
+        verify(request)
+          .left.map(err => GatewayError.InvalidArgument(err.mkString))
+      }
+      units = application.stages.map(stage => {
+        val meta = ExecutionMeta(
+          serviceName = stage.id,
+          servicePath = stage.signature.signatureName,
+          applicationRequestId = None,
+          applicationId = application.id.toLong,
+          signatureName = stage.signature.signatureName,
+          stageId = stage.id,
+          applicationNamespace = application.namespace,
+        )
+        ExecutionUnit(stage.client, meta)
+      })
+      res <- servePipeline(units, x)
+    } yield res
   }
 
   private def responseToJsObject(rr: PredictResponse): JsObject = {
