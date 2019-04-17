@@ -6,7 +6,8 @@ import cats.implicits._
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.gateway.grpc.Prediction
+import io.hydrosphere.serving.gateway.api.http.controllers.{JsonServeByIdRequest, JsonServeByNameRequest}
+import io.hydrosphere.serving.gateway.integrations.Prediction
 import io.hydrosphere.serving.model.api.TensorUtil
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
@@ -45,40 +46,19 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     } yield app
   }
 
-  override def serveGrpcApplication(data: PredictRequest): F[PredictResponse] = {
+  override def serveProtoRequest(data: PredictRequest): F[PredictResponse] = {
     data.modelSpec match {
       case Some(modelSpec) =>
         for {
           app <- getApp(modelSpec.name)
-          result <- serveApplication(app, data)
+          result <- serve(app, data)
         } yield result
       case None =>
         Sync[F].raiseError(GatewayError.InvalidArgument("ModelSpec is not defined"))
     }
   }
 
-  def jsonToRequest(appName: String, inputs: JsObject, signanture: ModelSignature): Try[PredictRequest] = {
-    try {
-      val c = new SignatureBuilder(signanture).convert(inputs)
-      c match {
-        case Left(value) =>
-          Failure(GatewayError.InvalidArgument(s"Validation error: $value"))
-        case Right(tensors) =>
-          Success(PredictRequest(
-            modelSpec = Some(
-              ModelSpec(
-                name = appName,
-                signatureName = signanture.signatureName,
-                version = None
-              )
-            ),
-            inputs = tensors.mapValues(_.toProto)
-          ))
-      }
-    } catch {
-      case x: Throwable => Failure(GatewayError.InvalidArgument(x.getMessage))
-    }
-  }
+
 
   override def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue] = {
     for {
@@ -89,7 +69,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       )
       maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
-      result <- serveApplication(app, request)
+      result <- serve(app, request)
     } yield responseToJsObject(result)
   }
 
@@ -102,7 +82,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
       )
       maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
       request <- Sync[F].fromTry(maybeRequest)
-      result <- serveApplication(app, request)
+      result <- serve(app, request)
     } yield responseToJsObject(result)
   }
 
@@ -147,7 +127,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     }
   }
 
-  def serveApplication(application: StoredApplication, request: PredictRequest): F[PredictResponse] = {
+  def serve(application: StoredApplication, request: PredictRequest): F[PredictResponse] = {
     val units = application.stages.map(stage => {
       val meta = ExecutionMeta(
         serviceName = stage.id,
@@ -163,8 +143,5 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
     servePipeline(units, request)
   }
 
-  private def responseToJsObject(rr: PredictResponse): JsObject = {
-    val fields = rr.outputs.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v)))
-    JsObject(fields)
-  }
+
 }

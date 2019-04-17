@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.grpc.reqstore
+package io.hydrosphere.serving.gateway.integrations.reqstore
 
 import io.hydrosphere.serving.monitoring.metadata.TraceData
 import spray.json._

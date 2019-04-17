@@ -6,9 +6,9 @@ import cats.effect._
 import cats.syntax.functor._
 import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
-import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
-import io.hydrosphere.serving.gateway.http.HttpApi
-import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.api.grpc.GrpcApi
+import io.hydrosphere.serving.gateway.api.http.HttpApi
+import io.hydrosphere.serving.gateway.persistence.servable.ApplicationStorage
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
@@ -88,8 +88,8 @@ object Main extends IOApp with Logging {
         Logging.warn[IO]("Application is cancelled")
       case ExitCase.Error(err) =>
         Logging.error[IO]("Application failure", err)
-    }.map{x =>
-      sys.addShutdownHook{
+    }.map { x =>
+      sys.addShutdownHook {
         LogManager.getContext match {
           case context: LoggerContext =>
             logger.debug("Shutting down log4j2")

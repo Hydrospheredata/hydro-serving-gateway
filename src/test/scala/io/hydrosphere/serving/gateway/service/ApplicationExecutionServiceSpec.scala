@@ -8,9 +8,11 @@ import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.contract.utils.ContractBuilders
 import io.hydrosphere.serving.gateway.GenericTest
-import io.hydrosphere.serving.gateway.grpc.Prediction
+import io.hydrosphere.serving.gateway.integrations.Prediction
 import io.hydrosphere.serving.gateway.persistence.application._
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionServiceImpl, ExecutionUnit}
+import io.hydrosphere.serving.gateway.persistence.servable
+import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
+import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.manager.grpc.entities.ModelVersion
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -56,9 +58,9 @@ class ApplicationExecutionServiceSpec extends GenericTest {
         override def close(): Future[Unit] = ???
       }
       val contract = ModelContract("app", Some(signature))
-      var storedApplications = Seq(StoredApplication("1", "app", None, contract, Seq(StoredStage("1", NonEmptyList.of(StoredService("1", 100, 100, ModelVersion(id=1))), signature, client))))
+      var storedApplications = Seq(StoredApplication("1", "app", None, contract, Seq(StoredStage("1", NonEmptyList.of(StoredServable("1", 100, 100, ModelVersion(id=1))), signature, client))))
 
-      val appStorage = new ApplicationStorage[IO] {
+      val appStorage = new servable.ApplicationStorage[IO] {
         override def getByName(name: String): IO[Option[StoredApplication]] = IO.pure(storedApplications.find(_.name == name))
 
         override def getById(id: String): IO[Option[StoredApplication]] = IO.pure(storedApplications.find(_.id == id))
@@ -90,7 +92,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
           "noticeMe" -> noticeMe
         )
       )
-      val result = applicationExecutionService.serveGrpcApplication(request).unsafeToFuture()
+      val result = applicationExecutionService.serveProtoRequest(request).unsafeToFuture()
       result.map { _ =>
         fail("I should fail")
       }.failed.map{ x =>

@@ -11,8 +11,7 @@ class ApplicationInMemoryStorage[F[_]: Sync] extends ApplicationStorage[F] {
   private[this] val applicationsByName = mutable.Map[String, StoredApplication]()
   private[this] val rwLock = new ReentrantReadWriteLock()
   
-  private def usingLock[A](l: Lock)(f: => A): F[A] = {
-    Sync[F].delay {
+  private def usingLock[A](l: Lock)(f: => A): F[A] = Sync[F].delay {
       try {
         l.lock()
         f
@@ -20,7 +19,7 @@ class ApplicationInMemoryStorage[F[_]: Sync] extends ApplicationStorage[F] {
         l.unlock()
       }
     }
-  }
+
   
   private def usingReadLock[A](f: => A): F[A] = usingLock(rwLock.readLock())(f)
   private def usingWriteLock[A](f: => A): F[A] = usingLock(rwLock.writeLock())(f)
@@ -44,15 +43,16 @@ class ApplicationInMemoryStorage[F[_]: Sync] extends ApplicationStorage[F] {
     }
   }
 
-  override def removeApps(ids: Seq[String]): F[Unit] = {
+  override def removeApps(ids: Seq[String]) = {
     usingWriteLock {
-      ids.foreach { id =>
+      ids.flatMap { id =>
         applicationsById.get(id) match {
           case Some(app) =>
             applicationsById.remove(id)
             applicationsByName.remove(app.name)
             app.close()
-          case None =>
+            List(app)
+          case None => Nil
         }
       }
     }

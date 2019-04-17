@@ -2,7 +2,8 @@ package io.hydrosphere.serving.gateway.service.application
 
 import cats.effect.Sync
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.gateway.grpc.Prediction
+import io.hydrosphere.serving.gateway.api.http.controllers.{JsonServeByIdRequest, JsonServeByNameRequest}
+import io.hydrosphere.serving.gateway.integrations.Prediction
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import spray.json.JsValue
@@ -15,7 +16,7 @@ trait ApplicationExecutionService[F[_]] {
 
   def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue]
 
-  def serveGrpcApplication(data: PredictRequest): F[PredictResponse]
+  def serveProtoRequest(data: PredictRequest): F[PredictResponse]
 
   def listApps: F[Seq[StoredApplication]]
 }

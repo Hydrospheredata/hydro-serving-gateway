@@ -1,11 +1,10 @@
-package io.hydrosphere.serving.gateway.grpc
+package io.hydrosphere.serving.gateway.integrations
 
-import cats.implicits._
 import cats.effect._
 import cats.effect.implicits._
+import cats.implicits._
 import io.hydrosphere.serving.gateway.config.Configuration
-import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
-import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
+import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
@@ -78,7 +77,7 @@ object Prediction extends Logging {
     }
   }
   
-  private def mkReqStore[F[_]](conf: Configuration)(implicit F: Concurrent[F]): F[Option[ServingReqStore[F]]] = {
+  private def mkReqStore[F[_]](conf: Configuration)(implicit F: Async[F]): F[Option[ServingReqStore[F]]] = {
     if (conf.application.reqstore.enabled) {
       ReqStore.create[F, (PredictRequest, ResponseOrError)](conf.application.reqstore)
         .map(_.some)

@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.grpc
+package io.hydrosphere.serving.gateway.integrations
 
 import java.util.concurrent.Executors
 
@@ -24,14 +24,12 @@ object Monitoring {
     builder.usePlaintext()
     val channel = builder.build()
     val stub = MonitoringServiceGrpc.stub(channel)
-    
-    new Monitoring[F] {
-      override def send(info: ExecutionInformation): F[Unit] = {
-        val op = IO.fromFuture(
-          IO(stub.withDeadlineAfter(deadline.length, deadline.unit).analyze(info))
-        )
-        F.liftIO(op).void
-      }
+
+    info: ExecutionInformation => {
+      val op = IO.fromFuture(
+        IO(stub.withDeadlineAfter(deadline.length, deadline.unit).analyze(info))
+      )
+      F.liftIO(op).void
     }
   }
 }

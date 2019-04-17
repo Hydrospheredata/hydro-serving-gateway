@@ -12,6 +12,7 @@ import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchResp
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
 import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 
 import scala.concurrent.duration.Duration
 import scala.util.Try
@@ -19,7 +20,8 @@ import scala.util.Try
 class DiscoveryWatcher[F[_]: Effect](
   apiGatewayConf: ApiGatewayConfig,
   clientDeadline: Duration,
-  applicationStorage: ApplicationStorage[F]
+  applicationStorage: ApplicationStorage[F],
+  servableStorage: ServableStorage[F]
 ) extends Actor with Timers with ActorLogging {
 
   import context._
@@ -38,8 +40,8 @@ class DiscoveryWatcher[F[_]: Effect](
   }
 
   override def aroundPreStart(): Unit = self ! Connect
-  override def receive: Receive = disconnected
 
+  override def receive: Receive = disconnected
 
   def disconnected: Receive = {
     case Connect =>
@@ -80,13 +82,20 @@ class DiscoveryWatcher[F[_]: Effect](
       log.info(s"Received application: $app")
     })
 
+    val servables = valid.flatMap { s =>
+      s.stages.toList.flatMap(_.services.toList)
+    }
+
     val upd = for {
       _ <- applicationStorage.addApps(valid)
-      _ <- applicationStorage.removeApps(resp.removedIds)
+      _ <- servableStorage.add(servables)
+      removed <- applicationStorage.removeApps(resp.removedIds)
+      removedServables = removed.flatMap(s => s.stages.toList.flatMap(_.services.toList))
+      _ <- servableStorage.remove(removedServables)
     } yield ()
     upd.toIO.unsafeRunSync()
-
   }
+
   private def connect(): StreamObserver[Empty] = {
     val observer = new StreamObserver[WatchResp] {
       override def onError(e: Throwable): Unit = {
@@ -113,11 +122,13 @@ class DiscoveryWatcher[F[_]: Effect](
 object DiscoveryWatcher {
 
   case class ConnectionFailed(err: Option[Throwable])
+
   case object Connect
 
-  def props[F[_]: Effect](
+  def props[F[_] : Effect](
     apiGatewayConf: ApiGatewayConfig,
     clientDeadline: Duration,
-    applicationStorage: ApplicationStorage[F]
-  ): Props = Props(new DiscoveryWatcher(apiGatewayConf, clientDeadline, applicationStorage))
+    applicationStorage: ApplicationStorage[F],
+    servableStorage: ServableStorage[F]
+  ): Props = Props(new DiscoveryWatcher(apiGatewayConf, clientDeadline, applicationStorage, servableStorage))
 }

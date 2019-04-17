@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.grpc.reqstore
+package io.hydrosphere.serving.gateway.integrations.reqstore
 
 import java.nio.ByteBuffer
 

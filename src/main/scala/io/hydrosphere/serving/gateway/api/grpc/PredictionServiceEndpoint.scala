@@ -1,11 +1,12 @@
-package io.hydrosphere.serving.gateway.grpc
+package io.hydrosphere.serving.gateway.api.grpc
 
 import cats.effect.Effect
 import cats.effect.syntax.effect._
+import cats.syntax.functor._
 import cats.syntax.monadError._
 import com.google.protobuf.empty.Empty
 import io.hydrosphere.serving.gateway.GatewayError.InvalidArgument
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
+import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, Executor}
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionService
 import io.hydrosphere.serving.tensorflow.api.prediction_service.StatusResponse
@@ -13,26 +14,22 @@ import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.Future
 
-class GrpcPredictionServiceImpl[F[_]: Effect](
-  gatewayPredictionService: ApplicationExecutionService[F]
+class PredictionServiceEndpoint[F[_]: Effect](
+  executor: Executor[F]
 ) extends PredictionService with Logging {
 
   override def predict(request: PredictRequest): Future[PredictResponse] = {
-    logger.info(s"Got request from G modelSpec=${request.modelSpec}")
-    request.modelSpec match {
-      case Some(_) =>
-        val resultF = gatewayPredictionService.serveGrpcApplication(request)
-        resultF.toIO.attempt.map {
-          case Right(result) =>
-            logger.info("Got successful GRPC response")
-            Right(result)
-          case Left(error) =>
-            logger.warn("Got an error from GRPC", error)
-            Left(error)
-        }.rethrow.unsafeToFuture()
-
-      case None => Future.failed(InvalidArgument("ModelSpec is not defined"))
-    }
+    logger.info(s"Got request from GRPC. modelSpec=${request.modelSpec}")
+    Effect[F].attempt(executor.serve(request))
+      .map {
+        case Right(result) =>
+          logger.info("Sending successful GRPC response")
+          Right(result)
+        case Left(error) =>
+          logger.warn("Sending failure GRPC response", error)
+          Left(error)
+      }
+      .rethrow.toIO.unsafeToFuture()
   }
   
   override def status(request: Empty): Future[StatusResponse] = Future.successful(

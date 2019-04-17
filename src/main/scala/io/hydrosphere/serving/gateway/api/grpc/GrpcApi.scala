@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.grpc
+package io.hydrosphere.serving.gateway.api.grpc
 
 import cats.effect.{Effect, Resource}
 import cats.implicits._
@@ -21,7 +21,7 @@ class GrpcApi[F[_]: Effect](
     .forPort(appConfig.grpc.port)
     .maxInboundMessageSize(appConfig.grpc.maxMessageSize))
 
-  val predictionService = new GrpcPredictionServiceImpl[F](gatewayPredictionService)
+  val predictionService = new PredictionServiceEndpoint[F](gatewayPredictionService)
 
   val server = builder.addService(PredictionServiceGrpc.bindService(predictionService, grpcEC)).build
 

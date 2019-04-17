@@ -5,24 +5,19 @@ import cats.data.NonEmptyList
 import cats.implicits._
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.manager.grpc.entities.{ModelVersion, Servable, ServingApp, Stage}
+import io.hydrosphere.serving.gateway.api.grpc.PredictDownstream
+import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
+import io.hydrosphere.serving.manager.grpc.entities.{Servable, ServingApp, Stage}
 
-import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 
-case class StoredService(
-  host: String,
-  port: Int,
-  weight: Int,
-  modelVersion: ModelVersion
-)
 
 case class StoredStage(
   id: String,
-  services: NonEmptyList[StoredService],
-  signature: ModelSignature,
-  client: PredictDownstream
+  services: NonEmptyList[StoredServable],
+  signature: ModelSignature
 )
 
 case class StoredApplication(
@@ -32,7 +27,7 @@ case class StoredApplication(
   contract: ModelContract,
   stages: Seq[StoredStage]
 ) {
-  
+
   def close(): Future[Unit] = {
     val closes = stages.map(_.client.close())
     Future.sequence(closes).map(_ => ())
@@ -40,7 +35,7 @@ case class StoredApplication(
 }
 
 object StoredApplication {
-  
+
   def create(app: ServingApp, deadline: Duration, sys: ActorSystem): Either[String, StoredApplication] = {
     val out = for {
       contract <- app.contract.toValid("Contract field is required").toEither
@@ -56,11 +51,11 @@ object StoredApplication {
     }
     out.leftMap(s => s"Invalid app: ${app.id}, ${app.name}. $s")
   }
-  
+
   private def createStage(stage: Stage, deadline: Duration, sys: ActorSystem): Either[String, StoredStage] = {
-    def toService(servable: Servable): Option[StoredService] = {
+    def toService(servable: Servable): Option[StoredServable] = {
       servable.modelVersion.map { mv =>
-        StoredService(
+        StoredServable(
           host = servable.host,
           port = servable.port,
           weight = servable.weight,

@@ -1,10 +1,11 @@
-package io.hydrosphere.serving.gateway.http
+package io.hydrosphere.serving.gateway.api.http
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.persistence.application.{StoredApplication, StoredService, StoredStage}
+import io.hydrosphere.serving.gateway.persistence.application.{StoredApplication, StoredStage}
+import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
 import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
 import io.hydrosphere.serving.manager.grpc.entities.{DockerImage, HostSelector, Model, ModelVersion}
 import io.hydrosphere.serving.tensorflow.tensor_shape.TensorShapeProto
@@ -119,7 +120,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
 
   implicit val gwModelVersion = jsonFormat10(ModelVersion.apply)
 
-  implicit val gwService = jsonFormat4(StoredService.apply)
+  implicit val gwService = jsonFormat4(StoredServable.apply)
   
   implicit val gwStageFormat = new JsonWriter[StoredStage] {
     override def write(obj: StoredStage): JsValue = {

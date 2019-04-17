@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.http
+package io.hydrosphere.serving.gateway.api.http
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
@@ -14,6 +14,7 @@ import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
 import io.hydrosphere.serving.gateway.{BuildInfo, Logging}
 import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
+import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, LegacyController, ServableController}
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
 import io.hydrosphere.serving.gateway.util.AsyncUtil
 
@@ -22,7 +23,7 @@ import scala.concurrent.ExecutionContext
 
 class HttpApi[F[_]: Effect](
   configuration: ApplicationConfig,
-  applicationExecutionService: ApplicationExecutionService[F]
+  executionService: ApplicationExecutionService[F]
 )(
   implicit val system: ActorSystem,
   implicit val materializer: ActorMaterializer
@@ -63,17 +64,25 @@ class HttpApi[F[_]: Effect](
       )
   }
 
-  val predictionController = new JsonPredictionController(applicationExecutionService)
+  val legacyController = new LegacyController(executionService)
+
+  val applicationController = new ApplicationController(executionService)
+
+  val servableController = new ServableController(executionService)
 
   val routes: Route = CorsDirectives.cors(CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))) {
     handleExceptions(commonExceptionHandler) {
-      predictionController.routes ~
-        path("gateway" / "buildinfo") {
-          complete(HttpResponse(
-            status = StatusCodes.OK,
-            entity = HttpEntity(ContentTypes.`application/json`, BuildInfo.toJson)
-          ))
-        } ~
+      legacyController.routes ~
+      pathPrefix("gateway") {
+        applicationController.routes ~
+          servableController.routes ~
+          path("buildinfo") {
+            complete(HttpResponse(
+              status = StatusCodes.OK,
+              entity = HttpEntity(ContentTypes.`application/json`, BuildInfo.toJson)
+            ))
+          }
+      } ~
         path("health") {
           complete {
             "OK"
