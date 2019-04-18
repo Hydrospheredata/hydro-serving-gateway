@@ -58,7 +58,7 @@ object MonitorExec {
           traceData = maybeTraceData,
           requestId = "",
           appInfo = appInfo,
-          latency = 0
+          latency = response.resp.metadata.latency
         )
         execInfo = ExecutionInformation(
           request = Option(wrappedRequest),
