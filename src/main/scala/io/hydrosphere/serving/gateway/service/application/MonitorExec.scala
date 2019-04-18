@@ -11,6 +11,7 @@ import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionError, ExecutionMetadata}
+import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 
 import scala.concurrent.duration._
@@ -29,15 +30,19 @@ object MonitorExec {
     maybeReqStore: Option[ServingReqStore[F]]
   )(implicit F: Concurrent[F], timer: Timer[F]): MonitorExec[F] = {
     (request: MessageData, response: AssociatedResponse, appInfo: Option[ApplicationInfo]) => {
+      val mv = response.servable.modelVersion
       val wrappedRequest = PredictRequest(
-        //          modelSpec=???, // TODO fill the modelSpec
-        inputs = request
+        inputs = request,
+        modelSpec = ModelSpec(
+          name = mv.name,
+          version = mv.version.some,
+          signatureName = mv.predict.signatureName
+        ).some
       )
       val wrappedResponse = response.resp.data match {
         case Left(err) => ExecutionInformation.ResponseOrError.Error(ExecutionError(err.toString))
         case Right(value) => ExecutionInformation.ResponseOrError.Response(PredictResponse(value))
       }
-      val mv = response.servable.modelVersion
       for {
         maybeTraceData <- maybeReqStore.toOptionT[F].flatMap { rs =>
           val res = CircuitBreaker[F](3 seconds, 5, 30 seconds).use {
