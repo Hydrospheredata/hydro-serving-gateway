@@ -4,53 +4,68 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import cats.effect._
 import cats.syntax.functor._
-import io.hydrosphere.serving.gateway.config.Configuration
+import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
 import io.hydrosphere.serving.gateway.api.grpc.GrpcApi
 import io.hydrosphere.serving.gateway.api.http.HttpApi
-import io.hydrosphere.serving.gateway.persistence.servable.ApplicationStorage
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
+import io.hydrosphere.serving.gateway.integrations.Monitoring
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
+import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, ChannelFactory, MonitorExec, PredictionClientFactory, ResponseSelector}
+import io.hydrosphere.serving.gateway.util.RandomNumberGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
 
 import scala.concurrent.ExecutionContext
-import scala.util.control.NonFatal
 
 
 object Main extends IOApp with Logging {
-  def application[F[_]](
+  def application[F[_]](config: ApplicationConfig)(
     implicit F: ConcurrentEffect[F],
+    timer: Timer[F],
     cs: ContextShift[F],
-    appConfig: Configuration,
     ec: ExecutionContext,
     actorSystem: ActorSystem
   ) = {
+    implicit val clock: Clock[F] = timer.clock
     for {
       _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
-
       _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))
-      appStorage <- Resource.liftF(ApplicationStorage.makeInMemory[F])
+
+      channelCtor = ChannelFactory.grpc[F]
+      clientCtor = PredictionClientFactory.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
+
+
+      reqStore <- Resource.liftF(MonitorExec.mkReqStore(config.reqstore))
+      monitoring = Monitoring.default(config.apiGateway, config.grpc.deadline, config.grpc.maxMessageSize)
+      shadow = MonitorExec.make(monitoring, reqStore)
+
+      rng <- Resource.liftF(RandomNumberGenerator.default)
+      responseSelector = ResponseSelector.randomSelector(F, rng)
+
+      servableStorage <- Resource.liftF(ServableStorage.makeInMemory[F](clientCtor))
+      appStorage <- Resource.liftF(ApplicationStorage.makeInMemory[F](servableStorage.getExecutor, shadow, responseSelector))
       appUpdater <- Resource.liftF(DiscoveryService.makeDefault[F](
-        appConfig.application.apiGateway,
-        appConfig.application.grpc.deadline,
-        appStorage
+        config.apiGateway,
+        config.grpc.deadline,
+        appStorage,
+        servableStorage
       ))
-      grpcAlg <- Resource.liftF(Prediction.create[F](appConfig))
 
       _ <- Resource.liftF(Logging.debug[F]("Initializing app execution service"))
       predictionService <- Resource.liftF(ApplicationExecutionService.makeDefault(
-        appConfig.application,
+        config,
         appStorage,
         grpcAlg
       ))
 
-      grpcApi <- GrpcApi.makeAsResource(appConfig.application, predictionService, ec)
+      grpcApi <- GrpcApi.makeAsResource(config, predictionService, ec)
       _ <- Resource.liftF(Logging.info[F]("Initialized GRPC API"))
 
       httpApi <- Resource.liftF(F.delay {
         implicit val mat: ActorMaterializer = ActorMaterializer()
-        new HttpApi(appConfig.application, predictionService)
+        new HttpApi(config, predictionService)
       })
       _ <- Resource.liftF(Logging.info[F]("Initialized HTTP API"))
 
@@ -67,8 +82,7 @@ object Main extends IOApp with Logging {
       _ <- Resource.liftF(Logging.info[IO](s"Configuration: $appConfig"))
       res <- {
         implicit val as = actorSystem
-        implicit val conf = appConfig
-        application[IO]
+        application[IO](appConfig.application)
       }
 
     } yield res

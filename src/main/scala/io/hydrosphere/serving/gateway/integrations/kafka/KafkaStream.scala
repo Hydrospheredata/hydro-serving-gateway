@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.integrations.kafka
 
-import io.hydrosphere.serving.gateway.persistence.application.StoredApplication
+import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.manager.grpc.applications.Application
 import org.apache.kafka.streams.kstream.{KStream, ValueMapper, ValueTransformer, ValueTransformerSupplier}
 import org.apache.logging.log4j.scala.Logging

@@ -8,8 +8,9 @@ import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.api.http.controllers.{JsonServeByIdRequest, JsonServeByNameRequest}
 import io.hydrosphere.serving.gateway.integrations.Prediction
+import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.model.api.TensorUtil
-import io.hydrosphere.serving.gateway.persistence.application.{ApplicationStorage, StoredApplication}
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.model.api.json.TensorJsonLens
 import io.hydrosphere.serving.model.api.tensor_builder.SignatureBuilder
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -28,7 +29,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   prediction: Prediction[F],
 )(implicit val ex: ExecutionContext) extends ApplicationExecutionService[F] with Logging {
 
-  def listApps: F[Seq[StoredApplication]] = {
+  def listApps: F[List[StoredApplication]] = {
     applicationStorage.listAll
   }
 
@@ -41,7 +42,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
 
   def getApp(id: Long): F[StoredApplication] = {
     for {
-      maybeApp <- applicationStorage.getById(id.toString)
+      maybeApp <- applicationStorage.getById(id)
       app <- Sync[F].fromOption(maybeApp, GatewayError.NotFound(s"Can't find an app with id $id"))
     } yield app
   }
@@ -63,11 +64,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   override def serveJsonById(jsonServeRequest: JsonServeByIdRequest): F[JsValue] = {
     for {
       app <- getApp(jsonServeRequest.targetId)
-      signature <- Sync[F].fromOption(
-        app.contract.predict,
-        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
-      )
-      maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, signature)
+      maybeRequest = jsonToRequest(app.name, jsonServeRequest.inputs, app.signature)
       request <- Sync[F].fromTry(maybeRequest)
       result <- serve(app, request)
     } yield responseToJsObject(result)
@@ -76,11 +73,7 @@ class ApplicationExecutionServiceImpl[F[_]: Sync](
   override def serveJsonByName(jsonServeByNameRequest: JsonServeByNameRequest): F[JsValue] = {
     for {
       app <- getApp(jsonServeByNameRequest.appName)
-      signature <- Sync[F].fromOption(
-        app.contract.predict,
-        GatewayError.NotFound(s"Tried to access invalid application. Empty contract.")
-      )
-      maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, signature)
+      maybeRequest = jsonToRequest(app.name, jsonServeByNameRequest.inputs, app.signature)
       request <- Sync[F].fromTry(maybeRequest)
       result <- serve(app, request)
     } yield responseToJsObject(result)

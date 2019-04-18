@@ -4,8 +4,8 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.persistence.application.{StoredApplication, StoredStage}
-import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
+import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredStage}
+import io.hydrosphere.serving.gateway.persistence.application.StoredStage
 import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
 import io.hydrosphere.serving.manager.grpc.entities.{DockerImage, HostSelector, Model, ModelVersion}
 import io.hydrosphere.serving.tensorflow.tensor_shape.TensorShapeProto
@@ -126,7 +126,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
     override def write(obj: StoredStage): JsValue = {
       JsObject(
         "id" -> JsString(obj.id),
-        "services" -> obj.services.toList.toJson
+        "services" -> obj.servables.toList.toJson
       )
     }
 

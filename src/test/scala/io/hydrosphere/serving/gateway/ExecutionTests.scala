@@ -6,7 +6,6 @@ import cats.Traverse
 import cats.data.{NonEmptyList, OptionT}
 import cats.effect.{Async, IO, Resource, Sync}
 import io.grpc.{CallOptions, ClientCall, ManagedChannel, ManagedChannelBuilder, MethodDescriptor}
-import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
 import io.hydrosphere.serving.gateway.util.AsyncUtil
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
@@ -16,7 +15,7 @@ import cats.syntax.functor._
 import cats.syntax.flatMap._
 import cats.syntax.option._
 import cats.implicits._
-import io.hydrosphere.serving.gateway.persistence.application.{StoredApplication, StoredStage}
+import io.hydrosphere.serving.gateway.persistence.application.StoredStage
 import io.hydrosphere.serving.manager.grpc.entities.ModelVersion
 import fs2.Stream
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
@@ -25,6 +24,7 @@ import io.hydrosphere.serving.gateway.config.Configuration
 import io.hydrosphere.serving.gateway.api.grpc.Prediction.ServingReqStore
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
+import io.hydrosphere.serving.gateway.persistence.StoredStage
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionError, ExecutionMetadata}
@@ -64,7 +64,7 @@ object PredictionExecutor {
     stage: StoredStage,
     servableCtor: ServableFactory[F]
   )(implicit F: Async[F]) = {
-    val downstream = Stream.emits(stage.services.toList)
+    val downstream = Stream.emits(stage.servables.toList)
       .evalMap(x => servableCtor(x).map(y => x -> y))
     val x = { data: PredictRequest =>
       downstream.map {

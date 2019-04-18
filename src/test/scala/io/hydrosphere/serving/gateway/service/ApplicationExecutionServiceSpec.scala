@@ -10,8 +10,7 @@ import io.hydrosphere.serving.contract.utils.ContractBuilders
 import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.integrations.Prediction
 import io.hydrosphere.serving.gateway.persistence.application._
-import io.hydrosphere.serving.gateway.persistence.servable
-import io.hydrosphere.serving.gateway.persistence.servable.StoredServable
+import io.hydrosphere.serving.gateway.persistence.{StoredApplication, servable}
 import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.manager.grpc.entities.ModelVersion
 import io.hydrosphere.serving.tensorflow.TensorShape
