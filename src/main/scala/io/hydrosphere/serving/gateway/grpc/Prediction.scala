@@ -1,10 +1,12 @@
 package io.hydrosphere.serving.gateway.grpc
 
+import cats.{Monad, MonadError}
 import cats.implicits._
 import cats.effect._
 import cats.effect.implicits._
 import io.hydrosphere.serving.gateway.config.{Configuration, ReqStoreConfig}
 import io.hydrosphere.serving.gateway.grpc.reqstore.ReqStore
+import io.hydrosphere.serving.gateway.persistence.application.PredictOut
 import io.hydrosphere.serving.gateway.service.application.{ExecutionMeta, ExecutionUnit}
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
@@ -40,7 +42,7 @@ object Prediction extends Logging {
           val listener = (st: CircuitBreaker.Status) => F.delay(logger.info(s"Restore circuit breaker status was changed: $st"))
           val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)(listener)
           (id: String, req: PredictRequest, resp: ResponseOrError) =>
-            cb.use(reqstore.save(id, (req, resp)).attempt.map(_.toOption))
+            cb.use(reqstore.save(id, (req, resp))).map(Some(_))
         case None =>
           (id: String, req: PredictRequest, resp: ResponseOrError) => F.pure(None)
       }
@@ -49,33 +51,43 @@ object Prediction extends Logging {
         case Some(monitoring) =>
           (req: PredictRequest, resp: ResponseOrError, meta: ExecutionMetadata) => {
             val info = ExecutionInformation(req.some, meta.some, resp)
-            monitoring.send(info).attempt.void
+            monitoring.send(info).start.void
           }
         case None =>
           (_: PredictRequest, _: ResponseOrError, _: ExecutionMetadata) => {
             F.pure(())
           }
       }
-      
-      new Prediction[F] {
-        override def predict(unit: ExecutionUnit, req: PredictRequest): F[PredictResponse] = {
-          val flow = for {
-            out       <- predictF(unit, req)
-            respOrErr =  Pbf.responseOrError(out.result)
-            traceData <- saveF(out.modelVersionId.toString, req, respOrErr)
-            execMeta  =  Pbf.execMeta(unit.meta, out.modelVersionId, traceData)
-            _         <- monitoringF(req, respOrErr, execMeta).start
-          } yield {
-            (out.result, traceData) match {
-              case (Right(resp), Some(data)) => Right(resp.withTraceData(data))
-              case _ => out.result
-            }
+      create[F](predictF, saveF, monitoringF)
+    }
+  }
+  
+  def create[F[_]](
+    predictF: (ExecutionUnit, PredictRequest) => F[PredictOut],
+    saveF: (String, PredictRequest, ResponseOrError) => F[Option[TraceData]],
+    analyzeF: (PredictRequest, ResponseOrError, ExecutionMetadata) => F[Unit]
+  )(implicit F: MonadError[F, Throwable]): Prediction[F] = {
+  
+    new Prediction[F] {
+      override def predict(unit: ExecutionUnit, req: PredictRequest): F[PredictResponse] = {
+        val flow = for {
+          out       <- predictF(unit, req)
+          respOrErr =  Pbf.responseOrError(out.result)
+          traceData <- saveF(out.modelVersionId.toString, req, respOrErr).attempt.map({
+                         case Left(_) => None
+                         case Right(v) => v
+                       })
+          execMeta  =  Pbf.execMeta(unit.meta, out.modelVersionId, traceData)
+          _         <- analyzeF(req, respOrErr, execMeta)
+        } yield {
+          (out.result, traceData) match {
+            case (Right(resp), Some(data)) => Right(resp.withTraceData(data))
+            case _ => out.result
           }
-          
-          flow.rethrow
         }
-      }
       
+        flow.rethrow
+      }
     }
   }
   
