@@ -8,10 +8,12 @@ import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
 import io.hydrosphere.serving.gateway.api.grpc.GrpcApi
 import io.hydrosphere.serving.gateway.api.http.HttpApi
+import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, ChannelFactory, MonitorExec, PredictionClientFactory, ResponseSelector}
+import io.hydrosphere.serving.gateway.execution.application.{MonitorExec, ResponseSelector}
+import io.hydrosphere.serving.gateway.execution.grpc.{GrpcChannel, PredictionClient}
 import io.hydrosphere.serving.gateway.util.RandomNumberGenerator
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
@@ -19,7 +21,9 @@ import org.apache.logging.log4j.core.config.Configurator
 
 import scala.concurrent.ExecutionContext
 
-
+// TODO: API for root cause (predict servable without shadow)
+// TODO: API for replay (need to add timestamps and override if neccessary)
+// TODO: merge circuit breaker changes
 object Main extends IOApp with Logging {
   def application[F[_]](config: ApplicationConfig)(
     implicit F: ConcurrentEffect[F],
@@ -33,8 +37,8 @@ object Main extends IOApp with Logging {
       _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
       _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))
 
-      channelCtor = ChannelFactory.grpc[F]
-      clientCtor = PredictionClientFactory.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
+      channelCtor = GrpcChannel.grpc[F]
+      clientCtor = PredictionClient.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
 
 
       reqStore <- Resource.liftF(MonitorExec.mkReqStore(config.reqstore))
@@ -54,10 +58,9 @@ object Main extends IOApp with Logging {
       ))
 
       _ <- Resource.liftF(Logging.debug[F]("Initializing app execution service"))
-      predictionService <- Resource.liftF(ApplicationExecutionService.makeDefault(
-        config,
+      predictionService <- Resource.liftF(ExecutionService.makeDefault(
         appStorage,
-        grpcAlg
+        servableStorage
       ))
 
       grpcApi <- GrpcApi.makeAsResource(config, predictionService, ec)
@@ -65,7 +68,7 @@ object Main extends IOApp with Logging {
 
       httpApi <- Resource.liftF(F.delay {
         implicit val mat: ActorMaterializer = ActorMaterializer()
-        new HttpApi(config, predictionService)
+        new HttpApi(config, predictionService, appStorage, servableStorage)
       })
       _ <- Resource.liftF(Logging.info[F]("Initialized HTTP API"))
 

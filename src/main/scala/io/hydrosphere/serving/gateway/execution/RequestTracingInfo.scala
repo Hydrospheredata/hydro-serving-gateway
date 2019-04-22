@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.service.application
+package io.hydrosphere.serving.gateway.execution
 
 case class RequestTracingInfo(
   xRequestId: String,

@@ -1,33 +1,35 @@
 package io.hydrosphere.serving.gateway.api.http.controllers
 
-import akka.http.scaladsl.server.Directives._
+import cats.data.OptionT
 import cats.effect.Effect
-import cats.effect.syntax.effect._
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, RequestTracingInfo}
+import cats.implicits._
+import io.hydrosphere.serving.gateway.GatewayError
+import io.hydrosphere.serving.gateway.execution.ExecutionService
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import spray.json.JsObject
 
-class ApplicationController[F[_]: Effect](
-  applicationExecutionService: ApplicationExecutionService[F]
-) extends GenericController {
+class ApplicationController[F[_]](
+  appStorage: ApplicationStorage[F],
+  executor: ExecutionService[F]
+)(implicit F: Effect[F]) extends GenericController {
 
   def listApps = pathEndOrSingleSlash {
-      get {
-        complete(applicationExecutionService.listApps.toIO.unsafeToFuture())
-      }
+    get {
+      completeF(appStorage.listAll)
     }
+  }
 
-  def serveByName = pathPrefix( Segment) { appName =>
+  def serveByName = pathPrefix(Segment) { appName =>
     post {
-      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
-        entity(as[JsObject]) { jsObject =>
-          complete {
-            logger.info(s"Serve request: name=$appName")
-            val request = JsonServeByNameRequest(
-              appName = appName,
-              inputs = jsObject
-            )
-            applicationExecutionService.serveJsonByName(request).toIO.unsafeToFuture()
-          }
+      entity(as[JsObject]) { jsObject =>
+        completeF {
+          logger.info(s"Serve request: name=$appName")
+          for {
+            app <- OptionT(appStorage.getByName(appName))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find application with name $appName")))
+            req <- jsonToRequest(app.name, None, jsObject, app.signature)
+            res <- executor.serve(req)
+          } yield responseToJsObject(res)
         }
       }
     }
@@ -36,5 +38,4 @@ class ApplicationController[F[_]: Effect](
   val routes = pathPrefix("application") {
     listApps ~ serveByName
   }
-
 }

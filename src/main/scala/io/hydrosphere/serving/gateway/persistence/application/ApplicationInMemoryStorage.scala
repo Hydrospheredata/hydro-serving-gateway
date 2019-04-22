@@ -3,8 +3,9 @@ package io.hydrosphere.serving.gateway.persistence.application
 import cats.effect.{Async, Clock}
 import cats.implicits._
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.service.application.Types.ServableCtor
-import io.hydrosphere.serving.gateway.service.application._
+import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.application._
+import io.hydrosphere.serving.gateway.execution.servable.ServableExec
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 import scala.collection.mutable
@@ -50,7 +51,7 @@ class ApplicationInMemoryStorage[F[_]](
   override def removeApps(ids: Seq[Long]): F[List[StoredApplication]] = {
     rwLock.write.use { _ =>
       F.delay {
-        ids.flatMap { id =>
+        ids.toList.flatMap { id =>
           applicationsById.get(id) match {
             case Some(app) =>
               applicationsById.remove(id)
@@ -59,6 +60,14 @@ class ApplicationInMemoryStorage[F[_]](
             case None => Nil
           }
         }
+      }
+    }
+  }
+
+  override def getExecutor(name: String): F[Option[ServableExec[F]]] = {
+    rwLock.read.use { _ =>
+      F.delay {
+        executors.get(name)
       }
     }
   }

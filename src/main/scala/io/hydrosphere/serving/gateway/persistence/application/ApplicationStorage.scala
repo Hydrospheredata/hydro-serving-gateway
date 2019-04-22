@@ -1,15 +1,17 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
-import cats.effect.{Async, Clock, Sync}
+import cats.effect.{Async, Clock}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.application.{MonitorExec, ResponseSelector}
+import io.hydrosphere.serving.gateway.execution.servable.ServableExec
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.service.application.{MonitorExec, ResponseSelector}
-import io.hydrosphere.serving.gateway.service.application.Types.ServableCtor
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 trait ApplicationStorage[F[_]] {
   def getByName(name: String): F[Option[StoredApplication]]
   def getById(id: Long): F[Option[StoredApplication]]
+  def getExecutor(name: String): F[Option[ServableExec[F]]]
 
   def listAll: F[List[StoredApplication]]
 

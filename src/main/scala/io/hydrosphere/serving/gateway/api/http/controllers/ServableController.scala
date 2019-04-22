@@ -1,42 +1,36 @@
 package io.hydrosphere.serving.gateway.api.http.controllers
 
-import akka.http.scaladsl.server.Directives._
+import cats.data.OptionT
 import cats.effect.Effect
-import cats.effect.syntax.effect._
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, RequestTracingInfo}
+import cats.implicits._
+import io.hydrosphere.serving.gateway.GatewayError
+import io.hydrosphere.serving.gateway.execution.ExecutionService
+import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import spray.json.JsObject
 
-class ServableController[F[_]: Effect](
-  applicationExecutionService: ApplicationExecutionService[F]
-) extends GenericController {
+class ServableController[F[_]](
+  servableStorage: ServableStorage[F],
+  executor: ExecutionService[F]
+)(implicit F: Effect[F]) extends GenericController {
 
-  def listServables =
-    pathEndOrSingleSlash {
-      get {
-        complete(applicationExecutionService.listApps.toIO.unsafeToFuture())
-      }
+  def listServables = pathEndOrSingleSlash {
+    get {
+      completeF(servableStorage.list)
     }
+  }
 
 
-  def serveServable = pathPrefix(Segment / Segment) { (modelName, modelVersion) =>
+  def serveServable = pathPrefix(Segment / LongNumber) { (modelName, modelVersion) =>
     post {
-      optionalTracingHeaders { (reqId, reqB3Id, reqB3SpanId) =>
-        entity(as[JsObject]) { jsObject =>
-          complete {
-            logger.info(s"Servable serve request: name=$modelName version=$modelVersion")
-            val request = JsonServeByNameRequest(
-              appName = appName,
-              inputs = jsObject
-            )
-            val maybeTracingInfo = reqId.map(xRequestId =>
-              RequestTracingInfo(
-                xRequestId = xRequestId,
-                xB3requestId = reqB3Id,
-                xB3SpanId = reqB3SpanId
-              )
-            )
-            applicationExecutionService.serveJsonByName(request, maybeTracingInfo).toIO.unsafeToFuture()
-          }
+      entity(as[JsObject]) { jsObject =>
+        completeF {
+          logger.info(s"Servable serve request: name=$modelName version=$modelVersion")
+          for {
+            servable <- OptionT(servableStorage.getByModelVersion(modelName, modelVersion))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable for a model ${modelName}:${modelVersion}")))
+            req <- jsonToRequest(modelName, Some(modelVersion), jsObject, servable.modelVersion.predict)
+            res <- executor.serve(req)
+          } yield responseToJsObject(res)
         }
       }
     }
@@ -45,5 +39,4 @@ class ServableController[F[_]: Effect](
   val routes = pathPrefix("servable") {
     listServables ~ serveServable
   }
-
 }

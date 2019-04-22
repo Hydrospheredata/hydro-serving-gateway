@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.service.application
+package io.hydrosphere.serving.gateway.execution.application
 
 import cats.data.OptionT
 import cats.effect.{Async, Concurrent, Timer}
@@ -6,7 +6,7 @@ import cats.implicits._
 import io.hydrosphere.serving.gateway.config.ReqStoreConfig
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
-import io.hydrosphere.serving.gateway.service.application.Types.{MessageData, ServingReqStore}
+import io.hydrosphere.serving.gateway.execution.Types.{MessageData, ServingReqStore}
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError

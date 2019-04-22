@@ -6,7 +6,7 @@ import cats.syntax.functor._
 import cats.syntax.monadError._
 import com.google.protobuf.empty.Empty
 import io.hydrosphere.serving.gateway.GatewayError.InvalidArgument
-import io.hydrosphere.serving.gateway.service.application.{ApplicationExecutionService, Executor}
+import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc.PredictionService
 import io.hydrosphere.serving.tensorflow.api.prediction_service.StatusResponse
@@ -15,7 +15,7 @@ import org.apache.logging.log4j.scala.Logging
 import scala.concurrent.Future
 
 class PredictionServiceEndpoint[F[_]: Effect](
-  executor: Executor[F]
+  executor: ExecutionService[F]
 ) extends PredictionService with Logging {
 
   override def predict(request: PredictRequest): Future[PredictResponse] = {
@@ -23,15 +23,15 @@ class PredictionServiceEndpoint[F[_]: Effect](
     Effect[F].attempt(executor.serve(request))
       .map {
         case Right(result) =>
-          logger.info("Sending successful GRPC response")
+          logger.info("Returning successful GRPC response")
           Right(result)
         case Left(error) =>
-          logger.warn("Sending failure GRPC response", error)
+          logger.warn("Returning failed GRPC response", error)
           Left(error)
       }
       .rethrow.toIO.unsafeToFuture()
   }
-  
+
   override def status(request: Empty): Future[StatusResponse] = Future.successful(
     StatusResponse(
       status = StatusResponse.ServiceStatus.SERVING,

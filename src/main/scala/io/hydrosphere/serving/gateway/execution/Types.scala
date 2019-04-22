@@ -1,5 +1,6 @@
-package io.hydrosphere.serving.gateway.service.application
+package io.hydrosphere.serving.gateway.execution
 
+import io.hydrosphere.serving.gateway.execution.servable.ServableExec
 import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.persistence.StoredServable
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError

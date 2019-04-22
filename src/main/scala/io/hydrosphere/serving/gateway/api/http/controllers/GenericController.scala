@@ -1,7 +1,9 @@
 package io.hydrosphere.serving.gateway.api.http.controllers
 
-import akka.http.scaladsl.server.Directives.optionalHeaderValueByName
-import cats.effect.Sync
+import akka.http.scaladsl.marshalling.ToResponseMarshaller
+import akka.http.scaladsl.server.Directives
+import cats.effect.implicits._
+import cats.effect.{Effect, Sync}
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.api.http.JsonProtocols
@@ -14,7 +16,13 @@ import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
 import org.apache.logging.log4j.scala.Logging
 import spray.json.JsObject
 
-trait GenericController extends JsonProtocols with Logging {
+trait GenericController extends JsonProtocols with Logging with Directives {
+  def completeF[F[_], A](body : => F[A])(implicit F: Effect[F], m: ToResponseMarshaller[A]) = {
+    complete {
+      body.toIO.unsafeToFuture()
+    }
+  }
+
   def optionalTracingHeaders = optionalHeaderValueByName(TracingHeaders.xRequestId) &
     optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
     optionalHeaderValueByName(TracingHeaders.xB3SpanId)

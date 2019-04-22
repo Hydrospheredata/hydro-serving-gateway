@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.service.application
+package io.hydrosphere.serving.gateway.execution.application
 
 import cats.data.NonEmptyList
 import cats.effect.Sync

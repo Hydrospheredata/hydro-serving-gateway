@@ -2,8 +2,9 @@ package io.hydrosphere.serving.gateway.persistence.servable
 
 import cats.effect.{Clock, Sync}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
-import io.hydrosphere.serving.gateway.service.application.{CloseableExec, PredictionClientFactory, ServableExec}
+import io.hydrosphere.serving.gateway.execution.servable.{CloseableExec, ServableExec}
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 import scala.collection.mutable
@@ -16,7 +17,7 @@ import scala.collection.mutable
   */
 class ServableInMemoryStorage[F[_]: Sync](
   lock: ReadWriteLock[F],
-  clientCtor: PredictionClientFactory[F]
+  clientCtor: PredictionClient.Factory[F]
 )(implicit clock: Clock[F]) extends ServableStorage[F] {
   private val F = Sync[F]
   private[this] val servableState = mutable.Map.empty[String, StoredServable]
@@ -74,6 +75,12 @@ class ServableInMemoryStorage[F[_]: Sync](
   def getExecutor(servable: StoredServable): F[ServableExec[F]] = {
     lock.read.use { _ =>
       F.delay(servableExecutor(servable.name))
+    }
+  }
+
+  override def getExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]] = {
+    lock.read.use{ _ =>
+      F.delay(servableExecutor.get(s"$modelName:$modelVersion"))
     }
   }
 }

@@ -1,4 +1,4 @@
-package io.hydrosphere.serving.gateway.service
+package io.hydrosphere.serving.gateway.execution
 
 import cats.data.NonEmptyList
 import cats.effect.IO
@@ -11,7 +11,6 @@ import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.integrations.Prediction
 import io.hydrosphere.serving.gateway.persistence.application._
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, servable}
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
 import io.hydrosphere.serving.manager.grpc.entities.ModelVersion
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -26,7 +25,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
 
   describe("ApplicationExecutionService") {
     it("should skip verifications for tensors with non-empty tensorContent field") {
-      val applicationExecutionService = new ApplicationExecutionServiceImpl[IO](
+      val applicationExecutionService = new ExecutionServiceImpl[IO](
         null, null, null
       )
       val ignoreMe = TensorProto(
@@ -76,7 +75,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
           IO.raiseError(new Exception("Some shit happened"))
         }
       }
-      val applicationExecutionService = new ApplicationExecutionServiceImpl[IO](
+      val applicationExecutionService = new ExecutionServiceImpl[IO](
         null, appStorage, prediction
       )
       val ignoreMe = TensorProto(
@@ -91,7 +90,7 @@ class ApplicationExecutionServiceSpec extends GenericTest {
           "noticeMe" -> noticeMe
         )
       )
-      val result = applicationExecutionService.serveProtoRequest(request).unsafeToFuture()
+      val result = applicationExecutionService.serve(request).unsafeToFuture()
       result.map { _ =>
         fail("I should fail")
       }.failed.map{ x =>

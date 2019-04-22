@@ -1,11 +1,11 @@
 package io.hydrosphere.serving.gateway.api.http
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+import cats.data.NonEmptyList
 import io.hydrosphere.serving.contract.model_contract.ModelContract
 import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredStage}
-import io.hydrosphere.serving.gateway.persistence.application.StoredStage
+import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredModelVersion, StoredServable, StoredStage}
 import io.hydrosphere.serving.manager.data_profile_types.DataProfileType
 import io.hydrosphere.serving.manager.grpc.entities.{DockerImage, HostSelector, Model, ModelVersion}
 import io.hydrosphere.serving.tensorflow.tensor_shape.TensorShapeProto
@@ -16,7 +16,7 @@ import spray.json._
 import scala.collection.mutable
 
 trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
-  implicit def protoEnumFormat[T <: GeneratedEnum](enumCompanion: GeneratedEnumCompanion[T]) = new RootJsonFormat[T] {
+  implicit def protoEnumFormat[T <: GeneratedEnum](enumCompanion: GeneratedEnumCompanion[T]): RootJsonFormat[T] = new RootJsonFormat[T] {
     override def write(obj: T): JsValue = {
       JsString(obj.toString())
     }
@@ -120,33 +120,26 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
 
   implicit val gwModelVersion = jsonFormat10(ModelVersion.apply)
 
+  implicit val storedModelVersion = jsonFormat5(StoredModelVersion.apply)
+
   implicit val gwService = jsonFormat4(StoredServable.apply)
-  
-  implicit val gwStageFormat = new JsonWriter[StoredStage] {
-    override def write(obj: StoredStage): JsValue = {
-      JsObject(
-        "id" -> JsString(obj.id),
-        "services" -> obj.servables.toList.toJson
-      )
+
+  implicit def nelFormat[A: RootJsonFormat] = new RootJsonFormat[NonEmptyList[A]] {
+    override def write(obj: NonEmptyList[A]): JsValue = {
+      obj.toList.toJson
     }
 
+    override def read(json: JsValue): NonEmptyList[A] = {
+      NonEmptyList.fromList(json.convertTo[List[A]]) match {
+        case Some(res) => res
+        case None => throw DeserializationException(s"Can't parse JSON '$json' as NonEmptyList")
+      }
+    }
   }
 
-  implicit def seqWrite[T: JsonWriter] = new JsonWriter[Seq[T]] {
-    def write(list: Seq[T]) = JsArray(list.map(_.toJson).toVector)
-  }
-  
-  implicit val gwAppFormat = new RootJsonFormat[StoredApplication] {
-    override def write(obj: StoredApplication): JsValue = {
-      JsObject(
-        "id" -> JsNumber(obj.id),
-        "name" -> JsString(obj.name),
-        "stages" -> obj.stages.toJson
-      )
-    }
-  
-    override def read(json: JsValue): StoredApplication = ???
-  }
+  implicit val gwStageFormat = jsonFormat3(StoredStage.apply)
+
+  implicit val gwAppFormat = jsonFormat5(StoredApplication.apply)
 }
 
 object JsonProtocols extends JsonProtocols

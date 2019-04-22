@@ -5,7 +5,7 @@ import cats.implicits._
 import io.grpc.netty.NettyServerBuilder
 import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
+import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.util.GrpcUtil.BuilderWrapper
 import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
 
@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext
 
 class GrpcApi[F[_]: Effect](
   appConfig: ApplicationConfig,
-  gatewayPredictionService: ApplicationExecutionService[F],
+  executionService: ExecutionService[F],
   grpcEC: ExecutionContext
 ) extends Logging {
 
@@ -21,7 +21,7 @@ class GrpcApi[F[_]: Effect](
     .forPort(appConfig.grpc.port)
     .maxInboundMessageSize(appConfig.grpc.maxMessageSize))
 
-  val predictionService = new PredictionServiceEndpoint[F](gatewayPredictionService)
+  val predictionService = new PredictionServiceEndpoint[F](executionService)
 
   val server = builder.addService(PredictionServiceGrpc.bindService(predictionService, grpcEC)).build
 
@@ -34,7 +34,7 @@ class GrpcApi[F[_]: Effect](
 object GrpcApi {
   def makeAsResource[F[_]](
     appConfig: ApplicationConfig,
-    predictService: ApplicationExecutionService[F],
+    predictService: ExecutionService[F],
     grpcEC: ExecutionContext
   )(implicit F: Effect[F]) = {
     val res = F.delay(new GrpcApi[F](appConfig, predictService, grpcEC))

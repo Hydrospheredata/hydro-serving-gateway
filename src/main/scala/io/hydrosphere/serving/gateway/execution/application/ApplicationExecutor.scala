@@ -1,11 +1,13 @@
-package io.hydrosphere.serving.gateway.service.application
+package io.hydrosphere.serving.gateway.execution.application
 
 import cats.Traverse
 import cats.data.{Kleisli, NonEmptyList}
 import cats.effect.{Async, Sync}
 import cats.implicits._
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.service.application.Types.{MessageData, ServableCtor}
+import io.hydrosphere.serving.gateway.execution.Types.{MessageData, ServableCtor}
+import io.hydrosphere.serving.gateway.execution.servable
+import io.hydrosphere.serving.gateway.execution.servable.{ResponseMetadata, ServableExec, ServableResponse}
 
 object ApplicationExecutor {
 
@@ -21,9 +23,9 @@ object ApplicationExecutor {
       }
     }
     val pipeline = pipelinedExecs.tail.foldLeft(pipelinedExecs.head) {
-      case (a, b) => a >> b
+      case (a, b) => a.andThen(b)
     }
-    data: MessageData => pipeline.run(ServableResponse(data = Right(data), metadata = ResponseMetadata(0)))
+    data: MessageData => pipeline.run(servable.ServableResponse(data = Right(data), metadata = ResponseMetadata(0)))
   }
 
   def appExecutor[F[_]](

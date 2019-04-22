@@ -15,7 +15,9 @@ import io.hydrosphere.serving.gateway.{BuildInfo, Logging}
 import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, LegacyController, ServableController}
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionService
+import io.hydrosphere.serving.gateway.execution.ExecutionService
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.util.AsyncUtil
 
 import scala.collection.immutable.Seq
@@ -23,7 +25,9 @@ import scala.concurrent.ExecutionContext
 
 class HttpApi[F[_]: Effect](
   configuration: ApplicationConfig,
-  executionService: ApplicationExecutionService[F]
+  executionService: ExecutionService[F],
+  appStorage: ApplicationStorage[F],
+  servableStorage: ServableStorage[F]
 )(
   implicit val system: ActorSystem,
   implicit val materializer: ActorMaterializer
@@ -64,11 +68,11 @@ class HttpApi[F[_]: Effect](
       )
   }
 
-  val legacyController = new LegacyController(executionService)
+  val legacyController = new LegacyController(executionService, appStorage)
 
-  val applicationController = new ApplicationController(executionService)
+  val applicationController = new ApplicationController(appStorage, executionService)
 
-  val servableController = new ServableController(executionService)
+  val servableController = new ServableController(servableStorage, executionService)
 
   val routes: Route = CorsDirectives.cors(CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))) {
     handleExceptions(commonExceptionHandler) {
