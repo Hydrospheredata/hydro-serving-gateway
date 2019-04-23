@@ -6,7 +6,7 @@ object Dependencies {
 
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "2.0.1-dev4"
+  val servingGrpcScala = "2.0.2-dev1"
   val kafkaApiVersion = "2.2.0"
   val catsEffectVersion = "1.2.0"
   val fs2Version = "1.0.4"
@@ -41,9 +41,7 @@ object Dependencies {
   )
 
   lazy val testDependencies = Seq(
-    "org.mockito" % "mockito-all" % "1.10.19" % "test",
     "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion % "test",
-    "com.dimafeng" %% "testcontainers-scala" % "0.7.0" % "test",
     "org.scalactic" %% "scalactic" % scalaTestVersion % "test",
     "org.scalatest" %% "scalatest" % scalaTestVersion % "test",
     "com.typesafe.akka" %% "akka-testkit" % akkaVersion % "test"
@@ -56,7 +54,7 @@ object Dependencies {
     "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0"
   )
 
-  lazy val hydroServingGatewayDependencies = logDependencies ++
+  lazy val all = logDependencies ++
     akkaDependencies ++
     testDependencies ++
     akkaHttpDependencies ++

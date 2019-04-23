@@ -4,28 +4,41 @@ import cats.Traverse
 import cats.data.{Kleisli, NonEmptyList}
 import cats.effect.{Async, Sync}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.execution.Types.{MessageData, ServableCtor}
-import io.hydrosphere.serving.gateway.execution.servable
-import io.hydrosphere.serving.gateway.execution.servable.{ResponseMetadata, ServableExec, ServableResponse}
+import io.hydrosphere.serving.gateway.util.InstantClock
 
 object ApplicationExecutor {
 
   def pipelineExecutor[F[_]](
-    stages: NonEmptyList[ServableExec[F]]
-  )(implicit F: Sync[F]): ServableExec[F] = {
+    stages: NonEmptyList[ServableExec[F]],
+  )(implicit F: Sync[F], clock: InstantClock[F]): ServableExec[F] = {
     val pipelinedExecs = stages.map { x =>
-      Kleisli { data: ServableResponse =>
+      Kleisli { data: (ServableResponse, ServableRequest) =>
         for {
-          goodData <- F.fromEither(data.data)
-          res <- x.predict(goodData)
-        } yield res
+          time <- clock.now
+          lastData <- F.fromEither(data._1.data)
+          req = ServableRequest(
+            data = lastData,
+            timestamp = time,
+            requestId = data._2.requestId
+          )
+          res <- x.predict(req)
+        } yield (res, req)
       }
     }
+
     val pipeline = pipelinedExecs.tail.foldLeft(pipelinedExecs.head) {
       case (a, b) => a.andThen(b)
     }
-    data: MessageData => pipeline.run(servable.ServableResponse(data = Right(data), metadata = ResponseMetadata(0)))
+
+    data: ServableRequest => {
+      val initData = ServableResponse(data.data.asRight, 0) -> data
+      for {
+        result <- pipeline.run(initData)
+      } yield result._1
+    }
   }
 
   def appExecutor[F[_]](
@@ -33,7 +46,7 @@ object ApplicationExecutor {
     shadow: MonitorExec[F],
     servableFactory: ServableCtor[F],
     rng: ResponseSelector[F]
-  )(implicit F: Async[F]): F[ServableExec[F]] = {
+  )(implicit F: Async[F], clock: InstantClock[F]): F[ServableExec[F]] = {
     for {
       stagesFunc <- Traverse[List].traverse(app.stages.toList) { stage =>
         StageExec.withShadow(app, stage, servableFactory, shadow, rng)

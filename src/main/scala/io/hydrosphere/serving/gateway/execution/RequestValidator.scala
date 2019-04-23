@@ -2,12 +2,12 @@ package io.hydrosphere.serving.gateway.execution
 
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
+import io.hydrosphere.serving.gateway.execution.Types.MessageData
 import io.hydrosphere.serving.model.api.TensorUtil
-import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
 object RequestValidator {
- def verify(request: PredictRequest): Either[Map[String, GatewayError], PredictRequest] = {
-  val verificationResults = request.inputs.map {
+ def verify(request: MessageData): Either[Map[String, GatewayError], MessageData] = {
+  val verificationResults = request.map {
    case (name, tensor) =>
     val verifiedTensor = if (!tensor.tensorContent.isEmpty) { // tensorContent - byte field, thus skip verifications
      Right(tensor)
@@ -26,7 +26,7 @@ object RequestValidator {
 
   if (errors.isEmpty) {
    val verifiedInputs = verificationResults.mapValues(_.right.get)
-   Right(request.copy(inputs = verifiedInputs))
+   Right(verifiedInputs)
   } else {
    Left(errors)
   }

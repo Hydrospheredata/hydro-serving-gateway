@@ -3,10 +3,12 @@ package io.hydrosphere.serving.gateway.execution.application
 import cats.data.OptionT
 import cats.effect.{Async, Concurrent, Timer}
 import cats.implicits._
+import com.google.protobuf.timestamp.Timestamp
 import io.hydrosphere.serving.gateway.config.ReqStoreConfig
+import io.hydrosphere.serving.gateway.execution.Types.ServingReqStore
+import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
-import io.hydrosphere.serving.gateway.execution.Types.{MessageData, ServingReqStore}
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
@@ -18,7 +20,7 @@ import scala.concurrent.duration._
 
 trait MonitorExec[F[_]] {
   def monitor(
-    request: MessageData,
+    request: ServableRequest,
     response: AssociatedResponse,
     appInfo: Option[ApplicationInfo]
   ): F[ExecutionMetadata]
@@ -29,10 +31,10 @@ object MonitorExec {
     monitoring: Monitoring[F],
     maybeReqStore: Option[ServingReqStore[F]]
   )(implicit F: Concurrent[F], timer: Timer[F]): MonitorExec[F] = {
-    (request: MessageData, response: AssociatedResponse, appInfo: Option[ApplicationInfo]) => {
+    (request: ServableRequest, response: AssociatedResponse, appInfo: Option[ApplicationInfo]) => {
       val mv = response.servable.modelVersion
       val wrappedRequest = PredictRequest(
-        inputs = request,
+        inputs = request.data,
         modelSpec = ModelSpec(
           name = mv.name,
           version = mv.version.some,
@@ -56,9 +58,13 @@ object MonitorExec {
           modelName = mv.name,
           modelVersion = mv.version,
           traceData = maybeTraceData,
-          requestId = "",
+          requestId = request.requestId.getOrElse(""),
           appInfo = appInfo,
-          latency = response.resp.metadata.latency
+          latency = response.resp.latency,
+          requestReceivedAt = Some(Timestamp(
+            seconds = request.timestamp.getEpochSecond,
+            nanos = request.timestamp.getNano
+          ))
         )
         execInfo = ExecutionInformation(
           request = Option(wrappedRequest),

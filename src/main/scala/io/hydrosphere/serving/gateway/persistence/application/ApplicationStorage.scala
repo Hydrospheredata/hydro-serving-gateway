@@ -6,7 +6,7 @@ import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
 import io.hydrosphere.serving.gateway.execution.application.{MonitorExec, ResponseSelector}
 import io.hydrosphere.serving.gateway.execution.servable.ServableExec
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.util.ReadWriteLock
+import io.hydrosphere.serving.gateway.util.{InstantClock, ReadWriteLock}
 
 trait ApplicationStorage[F[_]] {
   def getByName(name: String): F[Option[StoredApplication]]
@@ -24,7 +24,7 @@ object ApplicationStorage {
     servableCtor: ServableCtor[F],
     shadow: MonitorExec[F],
     selector: ResponseSelector[F]
-  )(implicit F: Async[F], clock: Clock[F]) = {
+  )(implicit F: Async[F], clock: InstantClock[F]) = {
     for {
       lock <- ReadWriteLock.reentrant
     } yield new ApplicationInMemoryStorage[F](lock, servableCtor, shadow, selector)

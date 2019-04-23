@@ -14,7 +14,7 @@ import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.execution.application.{MonitorExec, ResponseSelector}
 import io.hydrosphere.serving.gateway.execution.grpc.{GrpcChannel, PredictionClient}
-import io.hydrosphere.serving.gateway.util.RandomNumberGenerator
+import io.hydrosphere.serving.gateway.util.{InstantClock, RandomNumberGenerator}
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
@@ -33,6 +33,7 @@ object Main extends IOApp with Logging {
     actorSystem: ActorSystem
   ) = {
     implicit val clock: Clock[F] = timer.clock
+    implicit val iclock = InstantClock.fromClock(clock)
     for {
       _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
       _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))

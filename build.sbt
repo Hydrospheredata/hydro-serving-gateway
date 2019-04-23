@@ -33,7 +33,7 @@ mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
 resolvers += Resolver.bintrayRepo("findify", "maven")
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 
-libraryDependencies ++= Dependencies.hydroServingGatewayDependencies
+libraryDependencies ++= Dependencies.all
 
 enablePlugins(sbtdocker.DockerPlugin)
 

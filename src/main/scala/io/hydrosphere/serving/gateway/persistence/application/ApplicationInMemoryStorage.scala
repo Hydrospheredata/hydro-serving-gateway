@@ -6,7 +6,7 @@ import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
 import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.servable.ServableExec
-import io.hydrosphere.serving.gateway.util.ReadWriteLock
+import io.hydrosphere.serving.gateway.util.{InstantClock, ReadWriteLock}
 
 import scala.collection.mutable
 
@@ -15,7 +15,7 @@ class ApplicationInMemoryStorage[F[_]](
   channelFactory: ServableCtor[F],
   shadow: MonitorExec[F],
   selector: ResponseSelector[F]
-)(implicit F: Async[F], clock: Clock[F]) extends ApplicationStorage[F] {
+)(implicit F: Async[F], clock: InstantClock[F]) extends ApplicationStorage[F] {
   private[this] val applicationsById = mutable.Map.empty[Long, StoredApplication]
   private[this] val applicationsByName = mutable.Map.empty[String, StoredApplication]
   private[this] val executors = mutable.Map.empty[String, ServableExec[F]]
