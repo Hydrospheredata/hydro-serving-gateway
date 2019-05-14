@@ -23,17 +23,16 @@ object ReqStore extends Logging {
     F: Async[F],
     tbs: ToByteSource[A]
   ): F[ReqStore[F, A]] = {
-    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(_))
+    HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(cfg.prefix, _))
   }
 
-  def create0[F[_], A](client: HttpClient[F])(
+  def create0[F[_], A](prefix: String, client: HttpClient[F])(
     implicit
     F: Sync[F],
     tbs: ToByteSource[A]
   ): ReqStore[F, A] = {
     new ReqStore[F, A] {
       override def save(name: String, a: A): F[TraceData] = F.defer {
-        logger.info("Sending data to ReqStore")
         val byteSource = tbs.asByteSource(a)
 
         val entity = HttpEntity.Default(
@@ -44,12 +43,11 @@ object ReqStore extends Logging {
 
         val httpReq = HttpRequest(
           HttpMethods.POST,
-          Uri(s"/$name/put"),
+          Uri(s"$prefix$name/put"),
           entity = entity,
         )
 
         client.send(httpReq).flatMap(rsp => {
-          logger.info("Got answer from ReqStore")
           val data = new String(rsp.body)
           if (rsp.code == 200) {
             val decode = Either.catchNonFatal(data.parseJson.convertTo[TraceData])
