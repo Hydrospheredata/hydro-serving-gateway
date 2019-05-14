@@ -29,17 +29,17 @@ object CircuitBreaker {
     new CircuitBreaker[F] {
 
       private val stateRef: Ref[F, State[F]] = Ref.unsafe(State.Closed(Ref.unsafe(0)))
-      private def err = new Exception("Circuit breaker is open")
+      private def cbOpenError = new Exception("Circuit breaker is open")
 
       override def use[A](f: => F[A]): F[A] = {
         stateRef.get.flatMap({
           case State.Closed(errors) => callClosed(f, errors)
           case State.HalfOpen(tried) =>
             tried.get.flatMap({
-              case true => F.raiseError(err)
-              case false => tried.tryUpdate(_ => true).ifM(callHalfOpen(f), F.raiseError(err))
+              case true => F.raiseError(cbOpenError)
+              case false => tried.tryUpdate(_ => true).ifM(callHalfOpen(f), F.raiseError(cbOpenError))
             })
-          case State.Open() => F.raiseError(new Exception("Circuit breaker is open"))
+          case State.Open() => F.raiseError(cbOpenError)
         })
       }
 
@@ -49,13 +49,13 @@ object CircuitBreaker {
       private def onClosedErr: F[Unit] = {
         for {
           curr <- stateRef.get
-          _    <- curr match {
+          _ <- curr match {
             case State.Closed(errors) =>
               errors.modify(i => {
                 val next = i + 1
                 (next, next)
-              }).flatMap(i => if (i >= maxErrors) toOpen else F.pure(()))
-            case _ => F.pure(())
+              }).flatMap(i => if (i >= maxErrors) toOpen else F.unit)
+            case _ => F.unit
           }
         } yield ()
       }
@@ -63,7 +63,7 @@ object CircuitBreaker {
       private def toClosed: F[Unit] = stateRef.set(State.freshClosed) >> notifyListener(Status.Closed)
 
       private def toOpen: F[Unit] = {
-        stateRef.tryUpdate(_ => State.Open()).ifM(scheduleTimeout >> notifyListener(Status.Open), F.pure(()))
+        stateRef.tryUpdate(_ => State.Open()).ifM(scheduleTimeout >> notifyListener(Status.Open), F.unit)
       }
 
       private def scheduleTimeout: F[Unit] = {
@@ -75,7 +75,7 @@ object CircuitBreaker {
         f.timeout(callTimeout)
           .attempt
           .flatTap({
-            case Left(e) => onErr
+            case Left(_) => onErr
             case Right(_) => onSucc
           })
           .rethrow

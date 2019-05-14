@@ -11,8 +11,10 @@ class CircuitBreakerSpec extends GenericTest {
   implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
+  private val printerListener = (x: CircuitBreaker.Status) => IO.delay(println(x))
+
   it("less than max errors") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(printerListener)
     val ops = List(
       IO.pure(42),
       IO.raiseError(new Exception),
@@ -21,11 +23,12 @@ class CircuitBreakerSpec extends GenericTest {
       IO.pure(42)
     )
     val out = ops.map(a => cb.use(a).attempt.unsafeRunSync)
+
     out.last shouldBe Right(42)
   }
 
   it("more than max error") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(printerListener)
     val ops = List(
       IO.pure(42),
       IO.raiseError(new Exception),
@@ -39,7 +42,7 @@ class CircuitBreakerSpec extends GenericTest {
   }
 
   it("timeout") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(printerListener)
     val ops = List(
       IO.pure(42),
       IO.sleep(2 millis),
@@ -53,7 +56,7 @@ class CircuitBreakerSpec extends GenericTest {
   }
 
   it("resets to halfopen") {
-    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(_ => IO.unit)
+    val cb = CircuitBreaker[IO](1 millis, 3, 1 millis)(printerListener)
     val ops = List(
       IO.pure(42),
       IO.sleep(2 millis),
