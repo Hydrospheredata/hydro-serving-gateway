@@ -28,7 +28,7 @@ class ApplicationController[F[_]](
             app <- OptionT(appStorage.getByName(appName))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find application with name $appName")))
             req <- jsonToRequest(app.name, None, jsObject, app.signature)
-            res <- executor.serve(req)
+            res <- executor.predict(req)
           } yield responseToJsObject(res)
         }
       }

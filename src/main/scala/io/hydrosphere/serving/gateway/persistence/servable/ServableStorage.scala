@@ -2,6 +2,7 @@ package io.hydrosphere.serving.gateway.persistence.servable
 
 import cats.effect.{Clock, Sync}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.execution.application.MonitorExec
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
 import io.hydrosphere.serving.gateway.execution.servable.ServableExec
@@ -9,6 +10,8 @@ import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 trait ServableStorage[F[_]] {
   def getExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]]
+  def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]]
+
   def get(name: String): F[Option[StoredServable]]
   def getByModelVersion(model: String, version: Long): F[Option[StoredServable]]
 
@@ -19,9 +22,12 @@ trait ServableStorage[F[_]] {
 }
 
 object ServableStorage {
-  def makeInMemory[F[_]](clientCtor: PredictionClient.Factory[F])(implicit F: Sync[F], clock: Clock[F]) = {
+  def makeInMemory[F[_]](
+    clientCtor: PredictionClient.Factory[F],
+    shadow: MonitorExec[F]
+  )(implicit F: Sync[F], clock: Clock[F]) = {
     for {
       lock <- ReadWriteLock.reentrant
-    } yield new ServableInMemoryStorage[F](lock, clientCtor)
+    } yield new ServableInMemoryStorage[F](lock, clientCtor, shadow)
   }
 }

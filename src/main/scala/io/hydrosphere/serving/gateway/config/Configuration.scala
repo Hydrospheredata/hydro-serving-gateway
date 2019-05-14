@@ -5,10 +5,12 @@ import cats.effect.Sync
 final case class Configuration(application: ApplicationConfig)
 
 object Configuration  {
+  final case class ConfigurationLoadingException(msg: String) extends Throwable
+
   def load[F[_]](implicit F: Sync[F]) = F.defer {
     F.fromEither {
       pureconfig.loadConfig[Configuration].left.map { x =>
-        new IllegalArgumentException(x.toList.toString().mkString("\n"))
+        ConfigurationLoadingException(x.toList.mkString("\n"))
       }
     }
   }

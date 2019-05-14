@@ -1,7 +1,5 @@
 package io.hydrosphere.serving.gateway.execution
 
-import java.time.Instant
-
 import cats.data.OptionT
 import cats.effect.Sync
 import cats.implicits._
@@ -9,7 +7,7 @@ import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest}
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
-import io.hydrosphere.serving.gateway.util.InstantClock
+import io.hydrosphere.serving.monitoring.metadata.TraceData
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 
@@ -21,11 +19,11 @@ import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictRes
   * @tparam F effectful type
   */
 trait ExecutionService[F[_]] {
-  def serve(data: PredictRequest): F[PredictResponse]
+  def predict(data: PredictRequest): F[PredictResponse]
 
   def predictWithoutShadow(data: PredictRequest): F[PredictResponse]
 
-  def serveForTime(data: PredictRequest, time: Instant): F[PredictResponse]
+  def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse]
 
   def selectPredictor(spec: ModelSpec): F[ServableExec[F]]
 }
@@ -34,20 +32,19 @@ object ExecutionService {
   def makeDefault[F[_]](
     appStorage: ApplicationStorage[F],
     servableStorage: ServableStorage[F]
-  )(implicit F: Sync[F], clock: InstantClock[F]): F[ExecutionService[F]] = F.delay {
+  )(implicit F: Sync[F]): F[ExecutionService[F]] = F.delay {
     new ExecutionService[F] {
 
-      override def serve(data: PredictRequest): F[PredictResponse] = {
+      override def predict(data: PredictRequest): F[PredictResponse] = {
         for {
-          time <- clock.now
-          res <- serveForTime(data, time)
+          res <- replay(data, None)
         } yield res
       }
 
       override def selectPredictor(spec: ModelSpec): F[ServableExec[F]] = {
         spec.version match {
           case Some(version) =>
-            OptionT(servableStorage.getExecutor(spec.name, version))
+            OptionT(servableStorage.getShadowedExecutor(spec.name, version))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable with name ${spec.name} and version $version")))
           case None =>
             OptionT(appStorage.getExecutor(spec.name))
@@ -55,7 +52,7 @@ object ExecutionService {
         }
       }
 
-      override def serveForTime(data: PredictRequest, time: Instant): F[PredictResponse] = {
+      override def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
@@ -63,7 +60,7 @@ object ExecutionService {
           executor <- selectPredictor(modelSpec)
           request = ServableRequest(
             data = validated,
-            timestamp = time,
+            replayTrace = time,
             requestId = None
           )
           res <- executor.predict(request)
@@ -77,10 +74,9 @@ object ExecutionService {
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
           servable <- shadowlessPredictor(modelSpec)
-          time <- clock.now
           request = ServableRequest(
             data = validated,
-            timestamp = time,
+            replayTrace = None,
             requestId = None
           )
           res <- servable.predict(request)
@@ -94,8 +90,7 @@ object ExecutionService {
             OptionT(servableStorage.getExecutor(spec.name, version))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable with name ${spec.name} and version $version")))
           case None =>
-            OptionT(appStorage.getExecutor(spec.name))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find application with name ${spec.name}")))
+            F.raiseError(GatewayError.NotSupported("Replay for applications is not supported"))
         }
       }
     }

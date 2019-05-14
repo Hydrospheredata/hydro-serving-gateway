@@ -23,7 +23,7 @@ class LegacyController[F[_]](
               F.raiseError(GatewayError.NotFound(s"Can't find application with id $appId"))
             )
             x <- jsonToRequest(app.name, None, bytes, app.signature)
-            res <- executor.serve(x)
+            res <- executor.predict(x)
           } yield responseToJsObject(res)
         }
       }

@@ -2,6 +2,7 @@ package io.hydrosphere.serving.gateway.persistence.servable
 
 import cats.effect.{Clock, Sync}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.execution.application.MonitorExec
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
 import io.hydrosphere.serving.gateway.execution.servable.{CloseableExec, ServableExec}
@@ -17,12 +18,14 @@ import scala.collection.mutable
   */
 class ServableInMemoryStorage[F[_]: Sync](
   lock: ReadWriteLock[F],
-  clientCtor: PredictionClient.Factory[F]
+  clientCtor: PredictionClient.Factory[F],
+  shadow: MonitorExec[F]
 )(implicit clock: Clock[F]) extends ServableStorage[F] {
   private val F = Sync[F]
   private[this] val servableState = mutable.Map.empty[String, StoredServable]
   private[this] val servableCounter = mutable.Map.empty[String, Long]
-  private[this] val servableExecutor = mutable.Map.empty[String, CloseableExec[F]]
+  private[this] val servableExecutors = mutable.Map.empty[String, CloseableExec[F]]
+  private[this] val monitorableExecutors = mutable.Map.empty[String, ServableExec[F]]
 
   override def list: F[List[StoredServable]] =
     lock.read.use(_ => F.pure(servableState.values.toList))
@@ -47,7 +50,7 @@ class ServableInMemoryStorage[F[_]: Sync](
               exec <- ServableExec.forServable(s, clientCtor)
               _ <- F.delay(servableState += s.name -> s)
               _ <- F.delay(servableCounter += s.name -> 1)
-              _ <- F.delay(servableExecutor += s.name -> exec)
+              _ <- F.delay(servableExecutors += s.name -> exec)
             } yield ()
         }
       }.as(F.unit)
@@ -56,31 +59,42 @@ class ServableInMemoryStorage[F[_]: Sync](
 
   override def remove(ids: Seq[String]): F[Unit] = {
     lock.write.use { _ =>
-      F.delay {
-        ids.foreach { name =>
-          servableCounter.getOrElseUpdate(name, 0) match {
-            case 0 =>
-              for {
-                _ <- F.delay(servableState -= name)
-                _ <- F.delay(servableCounter -= name)
-                _ <- servableExecutor(name).close
-              } yield ()
-            case x => F.delay(servableCounter.update(name, x - 1)).as(F.unit)
-          }
+      ids.toList.traverse { name =>
+        servableCounter.get(name) match {
+          case Some(counter) =>
+            counter match {
+              case 1 =>
+                for {
+                  _ <- F.delay(servableState -= name)
+                  _ <- F.delay(servableCounter -= name)
+                  _ <- servableExecutors(name).close
+                  _ <- F.delay(servableExecutors -= name)
+                  _ <- F.delay(monitorableExecutors -= name)
+                } yield ()
+              case x =>
+                F.delay(servableCounter.update(name, x - 1))
+            }
+          case None => F.unit
         }
-      }
+      }.as(F.unit)
     }
   }
 
   def getExecutor(servable: StoredServable): F[ServableExec[F]] = {
     lock.read.use { _ =>
-      F.delay(servableExecutor(servable.name))
+      F.delay(servableExecutors(servable.name))
     }
   }
 
   override def getExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]] = {
-    lock.read.use{ _ =>
-      F.delay(servableExecutor.get(s"$modelName:$modelVersion"))
+    lock.read.use { _ =>
+      F.delay(servableExecutors.get(s"$modelName:$modelVersion"))
+    }
+  }
+
+  override def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]] = {
+    lock.read.use { _ =>
+      F.delay(monitorableExecutors.get(s"$modelName:$modelVersion"))
     }
   }
 }

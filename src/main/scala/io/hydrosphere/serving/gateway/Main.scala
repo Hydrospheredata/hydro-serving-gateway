@@ -33,7 +33,6 @@ object Main extends IOApp with Logging {
     actorSystem: ActorSystem
   ) = {
     implicit val clock: Clock[F] = timer.clock
-    implicit val iclock = InstantClock.fromClock(clock)
     for {
       _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
       _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))
@@ -49,7 +48,7 @@ object Main extends IOApp with Logging {
       rng <- Resource.liftF(RandomNumberGenerator.default)
       responseSelector = ResponseSelector.randomSelector(F, rng)
 
-      servableStorage <- Resource.liftF(ServableStorage.makeInMemory[F](clientCtor))
+      servableStorage <- Resource.liftF(ServableStorage.makeInMemory[F](clientCtor, shadow))
       appStorage <- Resource.liftF(ApplicationStorage.makeInMemory[F](servableStorage.getExecutor, shadow, responseSelector))
       appUpdater <- Resource.liftF(DiscoveryService.makeDefault[F](
         config.apiGateway,

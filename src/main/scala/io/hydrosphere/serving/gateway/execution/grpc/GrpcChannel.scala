@@ -18,7 +18,12 @@ object GrpcChannel {
   def grpc[F[_]](implicit F: Sync[F]): GrpcChannel.Factory[F] = {
     (host: String, port: Int) => {
       for {
-        ch <- F.delay(ManagedChannelBuilder.forAddress(host, port).build())
+        ch <- F.delay {
+          val builder = ManagedChannelBuilder.forAddress(host, port)
+          builder.usePlaintext()
+          builder.enableRetry()
+          builder.build()
+        }
       } yield new GrpcChannel[F] {
         override def close(): F[Unit] = F.delay(ch.shutdown())
 

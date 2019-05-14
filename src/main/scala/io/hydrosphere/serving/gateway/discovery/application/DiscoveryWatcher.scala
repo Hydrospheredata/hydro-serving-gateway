@@ -18,13 +18,12 @@ import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import scala.concurrent.duration.Duration
 import scala.util.Try
 
-class DiscoveryWatcher[F[_]: Effect](
+class DiscoveryWatcher[F[_]](
   apiGatewayConf: ApiGatewayConfig,
   clientDeadline: Duration,
   applicationStorage: ApplicationStorage[F],
   servableStorage: ServableStorage[F]
-) extends Actor with Timers with ActorLogging {
-  private val F = Effect[F]
+)(implicit F: Effect[F]) extends Actor with Timers with ActorLogging {
   val stub: ServingDiscoveryGrpc.ServingDiscoveryStub = {
     val builder = ManagedChannelBuilder
       .forAddress(apiGatewayConf.host, apiGatewayConf.grpcPort)
@@ -65,7 +64,7 @@ class DiscoveryWatcher[F[_]: Effect](
   }
 
   private def handleResp(resp: WatchResp): Unit = {
-    log.info(s"Discovery stream update: $resp")
+    log.debug(s"Discovery stream update: $resp")
     val converted = resp.added.map(app => StoredApplication.parse(app))
     val (addedApplications, parsingErrors) =
       converted.foldLeft((List.empty[StoredApplication], List.empty[String]))({

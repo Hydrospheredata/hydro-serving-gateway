@@ -29,7 +29,7 @@ class ServableController[F[_]](
             servable <- OptionT(servableStorage.getByModelVersion(modelName, modelVersion))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable for a model ${modelName}:${modelVersion}")))
             req <- jsonToRequest(modelName, Some(modelVersion), jsObject, servable.modelVersion.predict)
-            res <- executor.serve(req)
+            res <- executor.predict(req)
           } yield responseToJsObject(res)
         }
       }

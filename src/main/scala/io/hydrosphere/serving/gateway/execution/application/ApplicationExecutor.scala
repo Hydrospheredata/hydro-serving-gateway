@@ -12,16 +12,15 @@ import io.hydrosphere.serving.gateway.util.InstantClock
 object ApplicationExecutor {
 
   def pipelineExecutor[F[_]](
-    stages: NonEmptyList[ServableExec[F]],
-  )(implicit F: Sync[F], clock: InstantClock[F]): ServableExec[F] = {
+    stages: NonEmptyList[ServableExec[F]]
+  )(implicit F: Sync[F]): ServableExec[F] = {
     val pipelinedExecs = stages.map { x =>
       Kleisli { data: (ServableResponse, ServableRequest) =>
         for {
-          time <- clock.now
           lastData <- F.fromEither(data._1.data)
           req = ServableRequest(
             data = lastData,
-            timestamp = time,
+            replayTrace = None,
             requestId = data._2.requestId
           )
           res <- x.predict(req)

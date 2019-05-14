@@ -6,5 +6,5 @@ final case class ApplicationConfig(
   shadowingOn: Boolean,
   reqstore: ReqStoreConfig,
   apiGateway: ApiGatewayConfig,
-  streaming: KafkaConfig
+  streaming: Option[KafkaConfig] = None
 )

@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.execution.application
 import cats.data.OptionT
 import cats.effect.{Async, Concurrent, Timer}
 import cats.implicits._
-import com.google.protobuf.timestamp.Timestamp
+import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.config.ReqStoreConfig
 import io.hydrosphere.serving.gateway.execution.Types.ServingReqStore
 import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
@@ -26,7 +26,7 @@ trait MonitorExec[F[_]] {
   ): F[ExecutionMetadata]
 }
 
-object MonitorExec {
+object MonitorExec extends Logging {
   def make[F[_]](
     monitoring: Monitoring[F],
     maybeReqStore: Option[ServingReqStore[F]]
@@ -47,9 +47,10 @@ object MonitorExec {
       }
       for {
         maybeTraceData <- maybeReqStore.toOptionT[F].flatMap { rs =>
-          val res = CircuitBreaker[F](3 seconds, 5, 30 seconds).use {
-            rs.save(mv.id.toString, wrappedRequest -> wrappedResponse).attempt.map(_.toOption)
-          }
+          val listener = (st: CircuitBreaker.Status) => Logging.info(s"Restore circuit breaker status was changed: $st")
+          val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)(listener)
+          val res = cb.use(rs.save(mv.id.toString, wrappedRequest -> wrappedResponse))
+            .attempt.map(_.toOption)
           OptionT(res)
         }.value
         execMeta = ExecutionMetadata(
@@ -61,10 +62,7 @@ object MonitorExec {
           requestId = request.requestId.getOrElse(""),
           appInfo = appInfo,
           latency = response.resp.latency,
-          requestReceivedAt = Some(Timestamp(
-            seconds = request.timestamp.getEpochSecond,
-            nanos = request.timestamp.getNano
-          ))
+          originTraceData = request.replayTrace
         )
         execInfo = ExecutionInformation(
           request = Option(wrappedRequest),
