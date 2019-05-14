@@ -9,16 +9,17 @@ import io.hydrosphere.serving.gateway.execution.Types.ServingReqStore
 import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
+import io.hydrosphere.serving.gateway.persistence.StoredModelVersion
 import io.hydrosphere.serving.gateway.util.CircuitBreaker
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation
 import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionError, ExecutionMetadata}
+import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionError, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 
 import scala.concurrent.duration._
 
-trait MonitorExec[F[_]] {
+trait MonitoringClient[F[_]] {
   def monitor(
     request: ServableRequest,
     response: AssociatedResponse,
@@ -26,12 +27,33 @@ trait MonitorExec[F[_]] {
   ): F[ExecutionMetadata]
 }
 
-object MonitorExec extends Logging {
+object MonitoringClient extends Logging {
+  def mkExecutionMetadata(
+    modelVersion: StoredModelVersion,
+    replayTrace: Option[TraceData],
+    rsTraceData: Option[TraceData],
+    appInfo: Option[ApplicationInfo],
+    latency: Double,
+    requestId: String
+  ) = {
+    ExecutionMetadata(
+      signatureName = modelVersion.predict.signatureName,
+      modelVersionId = modelVersion.id,
+      modelName = modelVersion.name,
+      modelVersion = modelVersion.version,
+      traceData = rsTraceData,
+      requestId = requestId,
+      appInfo = appInfo,
+      latency = latency,
+      originTraceData = replayTrace
+    )
+  }
+
   def make[F[_]](
     monitoring: Monitoring[F],
     maybeReqStore: Option[ServingReqStore[F]]
-  )(implicit F: Concurrent[F], timer: Timer[F]): MonitorExec[F] = {
-    (request: ServableRequest, response: AssociatedResponse, appInfo: Option[ApplicationInfo]) => {
+  )(implicit F: Concurrent[F], timer: Timer[F]): MonitoringClient[F] = new MonitoringClient[F] {
+    override def monitor(request: ServableRequest, response: AssociatedResponse, appInfo: Option[ApplicationInfo]): F[ExecutionMetadata] = {
       val mv = response.servable.modelVersion
       val wrappedRequest = PredictRequest(
         inputs = request.data,
@@ -53,22 +75,15 @@ object MonitorExec extends Logging {
             .attempt.map(_.toOption)
           OptionT(res)
         }.value
-        execMeta = ExecutionMetadata(
-          signatureName = mv.predict.signatureName,
-          modelVersionId = mv.id,
-          modelName = mv.name,
-          modelVersion = mv.version,
-          traceData = maybeTraceData,
-          requestId = request.requestId.getOrElse(""),
-          appInfo = appInfo,
-          latency = response.resp.latency,
-          originTraceData = request.replayTrace
+        execMeta = mkExecutionMetadata(
+          mv,
+          request.replayTrace,
+          maybeTraceData,
+          appInfo,
+          response.resp.latency,
+          request.requestId
         )
-        execInfo = ExecutionInformation(
-          request = Option(wrappedRequest),
-          metadata = Option(execMeta),
-          responseOrError = wrappedResponse
-        )
+        execInfo = ExecutionInformation(wrappedRequest.some, execMeta.some, wrappedResponse)
         _ <- monitoring.send(execInfo)
       } yield execMeta
     }

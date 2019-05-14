@@ -1,10 +1,10 @@
 package io.hydrosphere.serving.gateway.persistence.application
 
-import cats.effect.Async
+import cats.effect.Concurrent
 import cats.implicits._
 import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
 import io.hydrosphere.serving.gateway.execution.application._
-import io.hydrosphere.serving.gateway.execution.servable.ServableExec
+import io.hydrosphere.serving.gateway.execution.servable.Predictor
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
@@ -13,12 +13,12 @@ import scala.collection.mutable
 class ApplicationInMemoryStorage[F[_]](
   rwLock: ReadWriteLock[F],
   channelFactory: ServableCtor[F],
-  shadow: MonitorExec[F],
+  shadow: MonitoringClient[F],
   selector: ResponseSelector[F]
-)(implicit F: Async[F]) extends ApplicationStorage[F] {
+)(implicit F: Concurrent[F]) extends ApplicationStorage[F] {
   private[this] val applicationsById = mutable.Map.empty[Long, StoredApplication]
   private[this] val applicationsByName = mutable.Map.empty[String, StoredApplication]
-  private[this] val executors = mutable.Map.empty[String, ServableExec[F]]
+  private[this] val executors = mutable.Map.empty[String, Predictor[F]]
 
   override def listAll: F[List[StoredApplication]] =
     rwLock.read.use(_ => F.pure(applicationsById.values.toList))
@@ -34,7 +34,7 @@ class ApplicationInMemoryStorage[F[_]](
       apps.traverse { app =>
         for {
           stages <- app.stages.traverse { x =>
-            StageExec.withShadow(app, x, channelFactory, shadow, selector)
+            StagePredictor.withShadow(app, x, channelFactory, shadow, selector)
           }
           pipelineExec = ApplicationExecutor.pipelineExecutor(stages)
         } yield {
@@ -62,7 +62,7 @@ class ApplicationInMemoryStorage[F[_]](
     }
   }
 
-  override def getExecutor(name: String): F[Option[ServableExec[F]]] = {
+  override def getExecutor(name: String): F[Option[Predictor[F]]] = {
     rwLock.read.use { _ =>
       F.delay {
         executors.get(name)

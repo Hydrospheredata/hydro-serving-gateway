@@ -5,8 +5,8 @@ import io.hydrosphere.serving.monitoring.metadata.TraceData
 
 final case class ServableRequest(
   data: MessageData,
+  requestId: String,
   replayTrace: Option[TraceData] = None,
-  requestId: Option[String] = None
 )
 
 final case class ServableResponse(

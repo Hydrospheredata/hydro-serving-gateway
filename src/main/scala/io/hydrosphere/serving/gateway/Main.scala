@@ -12,9 +12,9 @@ import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
-import io.hydrosphere.serving.gateway.execution.application.{MonitorExec, ResponseSelector}
+import io.hydrosphere.serving.gateway.execution.application.{MonitoringClient, ResponseSelector}
 import io.hydrosphere.serving.gateway.execution.grpc.{GrpcChannel, PredictionClient}
-import io.hydrosphere.serving.gateway.util.{InstantClock, RandomNumberGenerator}
+import io.hydrosphere.serving.gateway.util.{InstantClock, RandomNumberGenerator, UUIDGenerator}
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator
@@ -33,6 +33,7 @@ object Main extends IOApp with Logging {
     actorSystem: ActorSystem
   ) = {
     implicit val clock: Clock[F] = timer.clock
+    implicit val uuidGen: UUIDGenerator[F] = UUIDGenerator[F]
     for {
       _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
       _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))
@@ -41,9 +42,9 @@ object Main extends IOApp with Logging {
       clientCtor = PredictionClient.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
 
 
-      reqStore <- Resource.liftF(MonitorExec.mkReqStore(config.reqstore))
+      reqStore <- Resource.liftF(MonitoringClient.mkReqStore(config.reqstore))
       monitoring = Monitoring.default(config.apiGateway, config.grpc.deadline, config.grpc.maxMessageSize)
-      shadow = MonitorExec.make(monitoring, reqStore)
+      shadow = MonitoringClient.make(monitoring, reqStore)
 
       rng <- Resource.liftF(RandomNumberGenerator.default)
       responseSelector = ResponseSelector.randomSelector(F, rng)

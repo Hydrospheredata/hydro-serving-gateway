@@ -2,10 +2,10 @@ package io.hydrosphere.serving.gateway.persistence.servable
 
 import cats.effect.{Clock, Sync}
 import cats.implicits._
-import io.hydrosphere.serving.gateway.execution.application.MonitorExec
+import io.hydrosphere.serving.gateway.execution.application.MonitoringClient
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
-import io.hydrosphere.serving.gateway.execution.servable.{CloseableExec, ServableExec}
+import io.hydrosphere.serving.gateway.execution.servable.{CloseablePredictor, Predictor}
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 import scala.collection.mutable
@@ -16,16 +16,18 @@ import scala.collection.mutable
   * @param lock read write lock implementation to synchronize concurrent access to the inner state
   * @tparam F Effectful type
   */
-class ServableInMemoryStorage[F[_]: Sync](
+class ServableInMemoryStorage[F[_]](
   lock: ReadWriteLock[F],
   clientCtor: PredictionClient.Factory[F],
-  shadow: MonitorExec[F]
-)(implicit clock: Clock[F]) extends ServableStorage[F] {
-  private val F = Sync[F]
+  shadow: MonitoringClient[F]
+)(
+  implicit F: Sync[F],
+  clock: Clock[F]
+) extends ServableStorage[F] {
   private[this] val servableState = mutable.Map.empty[String, StoredServable]
   private[this] val servableCounter = mutable.Map.empty[String, Long]
-  private[this] val servableExecutors = mutable.Map.empty[String, CloseableExec[F]]
-  private[this] val monitorableExecutors = mutable.Map.empty[String, ServableExec[F]]
+  private[this] val servableExecutors = mutable.Map.empty[String, CloseablePredictor[F]]
+  private[this] val monitorableExecutors = mutable.Map.empty[String, Predictor[F]]
 
   override def list: F[List[StoredServable]] =
     lock.read.use(_ => F.pure(servableState.values.toList))
@@ -47,10 +49,12 @@ class ServableInMemoryStorage[F[_]: Sync](
             } yield ()
           case None =>
             for {
-              exec <- ServableExec.forServable(s, clientCtor)
+              exec <- Predictor.forServable(s, clientCtor)
+              shadowed = Predictor.withShadow(s, exec, shadow)
               _ <- F.delay(servableState += s.name -> s)
               _ <- F.delay(servableCounter += s.name -> 1)
               _ <- F.delay(servableExecutors += s.name -> exec)
+              _ <- F.delay(monitorableExecutors += s.name -> shadowed)
             } yield ()
         }
       }.as(F.unit)
@@ -80,19 +84,19 @@ class ServableInMemoryStorage[F[_]: Sync](
     }
   }
 
-  def getExecutor(servable: StoredServable): F[ServableExec[F]] = {
+  def getExecutor(servable: StoredServable): F[Predictor[F]] = {
     lock.read.use { _ =>
       F.delay(servableExecutors(servable.name))
     }
   }
 
-  override def getExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]] = {
+  override def getExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]] = {
     lock.read.use { _ =>
       F.delay(servableExecutors.get(s"$modelName:$modelVersion"))
     }
   }
 
-  override def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[ServableExec[F]]] = {
+  override def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]] = {
     lock.read.use { _ =>
       F.delay(monitorableExecutors.get(s"$modelName:$modelVersion"))
     }

@@ -5,22 +5,22 @@ import cats.effect.implicits._
 import cats.implicits._
 import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
-import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest, ServableResponse}
+import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredStage}
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
 
-object StageExec extends Logging {
+object StagePredictor extends Logging {
   def withShadow[F[_]](
     app: StoredApplication,
     stage: StoredStage,
     servableCtor: ServableCtor[F],
-    shadow: MonitorExec[F],
+    shadow: MonitoringClient[F],
     selector: ResponseSelector[F]
-  )(implicit F: Concurrent[F]): F[ServableExec[F]] = {
+  )(implicit F: Concurrent[F]): F[Predictor[F]] = {
     for {
       downstream <- stage.servables.traverse(x => servableCtor(x).map(y => x -> y))
     } yield {
-      new ServableExec[F] {
+      new Predictor[F] {
         def predict(request: ServableRequest): F[ServableResponse] = {
           for {
             results <- downstream.traverse {

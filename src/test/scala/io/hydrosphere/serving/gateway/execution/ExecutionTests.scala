@@ -5,25 +5,85 @@ import cats.effect.{Clock, IO}
 import cats.implicits._
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GenericTest
-import io.hydrosphere.serving.gateway.execution.application.{ApplicationExecutor, AssociatedResponse, MonitorExec, ResponseSelector, StageExec}
+import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
-import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest, ServableResponse}
+import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.servable.ServableInMemoryStorage
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredModelVersion, StoredServable, StoredStage}
-import io.hydrosphere.serving.gateway.util.InstantClock
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
+import io.hydrosphere.serving.gateway.util.ShowInstances._
+import io.hydrosphere.serving.gateway.util.{ReadWriteLock, UUIDGenerator}
+import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.TensorShape
+import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.tensor.{Int64Tensor, StringTensor}
-import io.hydrosphere.serving.gateway.util.ShowInstances._
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
+import scala.concurrent.ExecutionContext
 
 class ExecutionTests extends GenericTest {
   describe("Executors") {
     implicit val clock = Clock.create[IO]
-    implicit val iclock = InstantClock.fromClock(clock)
+    implicit val cs = IO.contextShift(ExecutionContext.global)
+    implicit val uuid = UUIDGenerator[IO]
 
-    it("should bl") {
+    it("single servable without shadow") {
+      val clientCtor = new PredictionClient.Factory[IO] {
+        override def make(host: String, port: Int): IO[PredictionClient[IO]] = IO {
+          new PredictionClient[IO] {
+            override def predict(request: PredictRequest): IO[PredictResponse] = IO {
+              PredictResponse(request.inputs + ("dummy" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto))
+            }
+
+            override def close(): IO[Unit] = IO.unit
+          }
+        }
+      }
+      var shadowEmpty = true
+      val shadow = new MonitoringClient[IO] {
+        override def monitor(request: ServableRequest, response: AssociatedResponse, appInfo: Option[ApplicationInfo]): IO[ExecutionMetadata] = {
+          shadowEmpty = false
+          IO(ExecutionMetadata.defaultInstance)
+        }
+      }
+      val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
+      val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
+      servableStorage.add(Seq(StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
+
+      val appStorage = new ApplicationStorage[IO] {
+        override def getByName(name: String): IO[Option[StoredApplication]] = ???
+        override def getById(id: Long): IO[Option[StoredApplication]] = ???
+        override def getExecutor(name: String): IO[Option[Predictor[IO]]] = ???
+        override def listAll: IO[List[StoredApplication]] = ???
+        override def addApps(apps: List[StoredApplication]): IO[Unit] = ???
+        override def removeApps(ids: List[Long]): IO[List[StoredApplication]] = ???
+      }
+
+      val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
+
+      val request = PredictRequest(
+        modelSpec = ModelSpec(
+          "test", 1L.some
+        ).some,
+        inputs = Map(
+          "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
+        )
+      )
+      val response = executionService.predictWithoutShadow(request).unsafeRunSync()
+      val data = response.outputs
+      assert(data.contains("dummy"))
+      assert(shadowEmpty)
+    }
+
+    it("Servable with shadowing execution") {
+      val shadowState = ListBuffer.empty[(ServableRequest, AssociatedResponse, Option[ApplicationInfo])]
+      val shadow: MonitoringClient[IO] = (req, resp, appInfo) => {
+        val entry = (req, resp, appInfo)
+        shadowState += entry
+        IO(ExecutionMetadata.defaultInstance)
+      }
       val clientCtor = new PredictionClient.Factory[IO] {
         override def make(host: String, port: Int): IO[PredictionClient[IO]] = IO {
           new PredictionClient[IO] {
@@ -36,24 +96,75 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val servable = StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok"))
-      val exec = ServableExec.forServable(servable, clientCtor).unsafeRunSync()
+      val servable = StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
+
+      val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
+      val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
+      servableStorage.add(Seq(servable)).unsafeRunSync()
+
+      val appStorage = new ApplicationStorage[IO] {
+        override def getByName(name: String): IO[Option[StoredApplication]] = ???
+        override def getById(id: Long): IO[Option[StoredApplication]] = ???
+        override def getExecutor(name: String): IO[Option[Predictor[IO]]] = ???
+        override def listAll: IO[List[StoredApplication]] = ???
+        override def addApps(apps: List[StoredApplication]): IO[Unit] = ???
+        override def removeApps(ids: List[Long]): IO[List[StoredApplication]] = ???
+      }
+
+      val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
+
+      val request = PredictRequest(
+        modelSpec = ModelSpec("shadowed", 2L.some).some,
+        inputs = Map(
+          "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
+        ))
+      val response = executionService.predict(request).unsafeRunSync()
+
+      val data = response.outputs
+      assert(data.contains("dummy"))
+      assert(shadowState.length == 1)
+      assert(shadowState.head._1.data === request.inputs)
+      assert(shadowState.head._2.servable === servable)
+      assert(shadowState.head._2.resp.data == Map(
+        "dummy" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto,
+        "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
+      ).asRight)
+      assert(shadowState.head._3 === None)
+    }
+
+    it("replay request for servable") {
+      val clientCtor = new PredictionClient.Factory[IO] {
+        override def make(host: String, port: Int): IO[PredictionClient[IO]] = IO {
+          new PredictionClient[IO] {
+            override def predict(request: PredictRequest): IO[PredictResponse] = IO {
+              PredictResponse(request.inputs + ("dummy" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto))
+            }
+
+            override def close(): IO[Unit] = IO.unit
+          }
+        }
+      }
+      val mv = StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")
+      val servable = StoredServable("AYAYA", 420, 100, mv)
+      val exec = Predictor.forServable(servable, clientCtor).unsafeRunSync()
+      val shadowState = ListBuffer.empty[ExecutionMetadata]
+      val shadow: MonitoringClient[IO] = (req, resp, appInfo) => {
+        val entry = MonitoringClient.mkExecutionMetadata(mv, req.replayTrace, None, appInfo, resp.resp.latency, req.requestId)
+        shadowState += entry
+        IO(entry)
+      }
+      val shadowed = Predictor.withShadow(servable, exec, shadow)
       val requestData = Map(
         "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
       )
-      val request = ServableRequest.forNow[IO](requestData).unsafeRunSync()
-      val response = exec.predict(request).unsafeRunSync()
+      val request = ServableRequest(requestData, "", TraceData(42, 1).some)
+      val response = shadowed.predict(request).unsafeRunSync()
       assert(response.data.isRight, response.data)
       val data = response.data.right.get
       assert(data.contains("dummy"))
-    }
-
-    it("Servable with shadowing execution") {
-      ???
-    }
-
-    it("Servable execution with overridden date") {
-      ???
+      assert(shadowState.length == 1)
+      assert(shadowState.head.originTraceData === TraceData(42, 1).some)
+      assert(shadowState.head.modelName == mv.name)
     }
 
     it("Stage execution") {
@@ -77,7 +188,7 @@ class ExecutionTests extends GenericTest {
             }
         }
       }
-      val shadow: MonitorExec[IO] = (_: ServableRequest, _: AssociatedResponse, _: Option[ApplicationInfo]) => {
+      val shadow: MonitoringClient[IO] = (_: ServableRequest, _: AssociatedResponse, _: Option[ApplicationInfo]) => {
         IO(ExecutionMetadata.defaultInstance)
       }
       val selector = new ResponseSelector[IO] {
@@ -86,12 +197,12 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val stageExec = StageExec.withShadow(storedApp, storedStage, servableCtor, shadow, selector).unsafeRunSync()
+      val stageExec = StagePredictor.withShadow(storedApp, storedStage, servableCtor, shadow, selector).unsafeRunSync()
 
       val requestData = Map(
         "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
       )
-      val request = ServableRequest.forNow[IO](requestData).unsafeRunSync()
+      val request = ServableRequest(requestData, "")
       val result = stageExec.predict(request).unsafeRunSync()
       assert(result.data.isRight, result.data)
       val resultData = result.data.right.get
@@ -101,7 +212,7 @@ class ExecutionTests extends GenericTest {
     }
 
     it("Pipeline executor success route") {
-      val e1: ServableExec[IO] = (request: ServableRequest) => IO {
+      val e1: Predictor[IO] = (request: ServableRequest) => IO {
         println(s"[exec1] got ${request.show}")
         val toInject = Map(
           "exec1" -> StringTensor(TensorShape.scalar, Seq("exec1")).toProto
@@ -113,7 +224,7 @@ class ExecutionTests extends GenericTest {
         println(s"[exec1] return ${resp.show}")
         resp
       }
-      val e2: ServableExec[IO] = (request: ServableRequest) => IO {
+      val e2: Predictor[IO] = (request: ServableRequest) => IO {
         println(s"[exec2] got ${request.show}")
 
         val toInject = Map(
@@ -126,7 +237,7 @@ class ExecutionTests extends GenericTest {
         println(s"[exec2] return ${resp.show}")
         resp
       }
-      val e3: ServableExec[IO] = (request: ServableRequest) => IO {
+      val e3: Predictor[IO] = (request: ServableRequest) => IO {
         println(s"[exec3] got ${request.show}")
 
         val toInject = Map(
@@ -139,14 +250,14 @@ class ExecutionTests extends GenericTest {
         println(s"[exec3] return ${resp.show}")
         resp
       }
-      val execs = NonEmptyList.of[ServableExec[IO]](e1, e2, e3)
+      val execs = NonEmptyList.of[Predictor[IO]](e1, e2, e3)
 
       val pipeline = ApplicationExecutor.pipelineExecutor[IO](execs)
 
       val requestData = Map(
         "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
       )
-      val request = ServableRequest.forNow[IO](requestData).unsafeRunSync()
+      val request = ServableRequest(requestData, "")
       val result = pipeline.predict(request).unsafeRunSync()
       val data = result.data.right.get
       assert(StringTensor.fromProto(data("test")).data === Seq("hello"))
@@ -186,7 +297,7 @@ class ExecutionTests extends GenericTest {
         }
       }
       val shadowLog = mutable.ListBuffer.empty[(ServableRequest, AssociatedResponse, Option[ApplicationInfo])]
-      val shadow: MonitorExec[IO] = (
+      val shadow: MonitoringClient[IO] = (
         req: ServableRequest,
         resp: AssociatedResponse,
         appInfo: Option[ApplicationInfo]
@@ -207,7 +318,7 @@ class ExecutionTests extends GenericTest {
       val requestData = Map(
         "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
       )
-      val request = ServableRequest.forNow[IO](requestData).unsafeRunSync()
+      val request = ServableRequest(requestData, "")
 
       val result = executor.predict(request).unsafeRunSync()
       val data = result.data.right.get

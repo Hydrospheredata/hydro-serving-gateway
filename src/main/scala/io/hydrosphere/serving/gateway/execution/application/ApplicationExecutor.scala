@@ -1,19 +1,17 @@
 package io.hydrosphere.serving.gateway.execution.application
 
-import cats.Traverse
 import cats.data.{Kleisli, NonEmptyList}
-import cats.effect.{Async, Sync}
+import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
-import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest, ServableResponse}
+import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
-import io.hydrosphere.serving.gateway.util.InstantClock
 
 object ApplicationExecutor {
 
   def pipelineExecutor[F[_]](
-    stages: NonEmptyList[ServableExec[F]]
-  )(implicit F: Sync[F]): ServableExec[F] = {
+    stages: NonEmptyList[Predictor[F]]
+  )(implicit F: Sync[F]): Predictor[F] = {
     val pipelinedExecs = stages.map { x =>
       Kleisli { data: (ServableResponse, ServableRequest) =>
         for {
@@ -42,18 +40,14 @@ object ApplicationExecutor {
 
   def appExecutor[F[_]](
     app: StoredApplication,
-    shadow: MonitorExec[F],
+    shadow: MonitoringClient[F],
     servableFactory: ServableCtor[F],
     rng: ResponseSelector[F]
-  )(implicit F: Async[F], clock: InstantClock[F]): F[ServableExec[F]] = {
+  )(implicit F: Concurrent[F]): F[Predictor[F]] = {
     for {
-      stagesFunc <- Traverse[List].traverse(app.stages.toList) { stage =>
-        StageExec.withShadow(app, stage, servableFactory, shadow, rng)
+      stagesFunc <- app.stages.traverse { stage =>
+        StagePredictor.withShadow(app, stage, servableFactory, shadow, rng)
       }
-      nonEmptyFuncs <- F.fromOption(
-        NonEmptyList.fromList(stagesFunc),
-        new IllegalStateException(s"Application with no stages id=${app.id}, name=${app.name}")
-      )
-    } yield pipelineExecutor(nonEmptyFuncs)
+    } yield pipelineExecutor(stagesFunc)
   }
 }

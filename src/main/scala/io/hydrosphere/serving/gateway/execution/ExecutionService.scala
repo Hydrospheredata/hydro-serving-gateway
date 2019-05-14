@@ -4,9 +4,10 @@ import cats.data.OptionT
 import cats.effect.Sync
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
-import io.hydrosphere.serving.gateway.execution.servable.{ServableExec, ServableRequest}
+import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest}
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
+import io.hydrosphere.serving.gateway.util.UUIDGenerator
 import io.hydrosphere.serving.monitoring.metadata.TraceData
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
@@ -25,14 +26,17 @@ trait ExecutionService[F[_]] {
 
   def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse]
 
-  def selectPredictor(spec: ModelSpec): F[ServableExec[F]]
+  def selectPredictor(spec: ModelSpec): F[Predictor[F]]
 }
 
 object ExecutionService {
   def makeDefault[F[_]](
     appStorage: ApplicationStorage[F],
     servableStorage: ServableStorage[F]
-  )(implicit F: Sync[F]): F[ExecutionService[F]] = F.delay {
+  )(
+    implicit F: Sync[F],
+    uuid: UUIDGenerator[F]
+  ): F[ExecutionService[F]] = F.delay {
     new ExecutionService[F] {
 
       override def predict(data: PredictRequest): F[PredictResponse] = {
@@ -41,7 +45,7 @@ object ExecutionService {
         } yield res
       }
 
-      override def selectPredictor(spec: ModelSpec): F[ServableExec[F]] = {
+      override def selectPredictor(spec: ModelSpec): F[Predictor[F]] = {
         spec.version match {
           case Some(version) =>
             OptionT(servableStorage.getShadowedExecutor(spec.name, version))
@@ -58,10 +62,11 @@ object ExecutionService {
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
           executor <- selectPredictor(modelSpec)
+          id <- uuid.random.map(_.toString)
           request = ServableRequest(
             data = validated,
             replayTrace = time,
-            requestId = None
+            requestId = id
           )
           res <- executor.predict(request)
           responseData <- F.fromEither(res.data)
@@ -74,17 +79,18 @@ object ExecutionService {
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
           servable <- shadowlessPredictor(modelSpec)
+          id <- uuid.random.map(_.toString)
           request = ServableRequest(
             data = validated,
             replayTrace = None,
-            requestId = None
+            requestId = id
           )
           res <- servable.predict(request)
           responseData <- F.fromEither(res.data)
         } yield PredictResponse(responseData)
       }
 
-      def shadowlessPredictor(spec: ModelSpec): F[ServableExec[F]] = {
+      def shadowlessPredictor(spec: ModelSpec): F[Predictor[F]] = {
         spec.version match {
           case Some(version) =>
             OptionT(servableStorage.getExecutor(spec.name, version))

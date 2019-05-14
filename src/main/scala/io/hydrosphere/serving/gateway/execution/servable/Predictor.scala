@@ -5,32 +5,32 @@ import java.util.concurrent.TimeUnit
 import cats.Monad
 import cats.effect.{Clock, Sync}
 import cats.implicits._
-import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitorExec}
+import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
 
-trait ServableExec[F[_]] {
+trait Predictor[F[_]] {
   def predict(request: ServableRequest): F[ServableResponse]
 }
 
-trait CloseableExec[F[_]] extends ServableExec[F] {
+trait CloseablePredictor[F[_]] extends Predictor[F] {
   def close: F[Unit]
 }
 
-object ServableExec {
+object Predictor {
   def forServable[F[_]](
     servable: StoredServable,
     clientCtor: PredictionClient.Factory[F]
   )(
     implicit F: Sync[F],
     clock: Clock[F],
-  ): F[CloseableExec[F]] = {
+  ): F[CloseablePredictor[F]] = {
     for {
       stub <- clientCtor.make(servable.host, servable.port)
-    } yield new CloseableExec[F] {
+    } yield new CloseablePredictor[F] {
       def predict(request: ServableRequest): F[ServableResponse] = {
         val req = PredictRequest(
           modelSpec = Some(ModelSpec(
@@ -56,10 +56,10 @@ object ServableExec {
 
   def withShadow[F[_]: Monad](
     servable: StoredServable,
-    servableExec: ServableExec[F],
-    shadow: MonitorExec[F]
-  ) = {
-    new ServableExec[F] {
+    servableExec: Predictor[F],
+    shadow: MonitoringClient[F]
+  ): Predictor[F] = {
+    new Predictor[F] {
       override def predict(request: ServableRequest): F[ServableResponse] = {
         for {
           res <- servableExec.predict(request)
