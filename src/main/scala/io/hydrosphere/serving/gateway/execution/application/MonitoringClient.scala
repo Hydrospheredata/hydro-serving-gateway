@@ -76,6 +76,7 @@ object MonitoringClient extends Logging {
           request.requestId
         )
       val flow = for {
+        _ <- Logging.debug(s"Monitoring response for ${response.servable} ${appInfo}")
         maybeTraceData <- maybeReqStore.toOptionT[F].flatMap { rs =>
           val listener = (st: CircuitBreaker.Status) => Logging.info(s"Restore circuit breaker status was changed: $st")
           val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)(listener)

@@ -56,7 +56,7 @@ class DiscoveryWatcher[F[_]](
 
     case ConnectionFailed(maybeE) =>
       maybeE match {
-        case Some(e) => log.error(e, "Discovery stream was failed with error")
+        case Some(e) => log.debug(s"Discovery stream was failed with error: $e")
         case None => log.warning("Discovery stream was closed")
       }
       timers.startSingleTimer("connect", Connect, apiGatewayConf.reconnectTimeout)
