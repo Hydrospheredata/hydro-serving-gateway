@@ -14,7 +14,7 @@ import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.execution.application.{MonitoringClient, ResponseSelector}
 import io.hydrosphere.serving.gateway.execution.grpc.{GrpcChannel, PredictionClient}
-import io.hydrosphere.serving.gateway.util.{InstantClock, RandomNumberGenerator, UUIDGenerator}
+import io.hydrosphere.serving.gateway.util.{RandomNumberGenerator, UUIDGenerator}
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.config.Configurator

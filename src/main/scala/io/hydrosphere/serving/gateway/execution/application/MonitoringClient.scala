@@ -67,7 +67,15 @@ object MonitoringClient extends Logging {
         case Left(err) => ExecutionInformation.ResponseOrError.Error(ExecutionError(err.toString))
         case Right(value) => ExecutionInformation.ResponseOrError.Response(PredictResponse(value))
       }
-      for {
+      val metaWithoutTrace = mkExecutionMetadata(
+          mv,
+          request.replayTrace,
+          None,
+          appInfo,
+          response.resp.latency,
+          request.requestId
+        )
+      val flow = for {
         maybeTraceData <- maybeReqStore.toOptionT[F].flatMap { rs =>
           val listener = (st: CircuitBreaker.Status) => Logging.info(s"Restore circuit breaker status was changed: $st")
           val cb = CircuitBreaker[F](3 seconds, 5, 30 seconds)(listener)
@@ -75,17 +83,17 @@ object MonitoringClient extends Logging {
             .attempt.map(_.toOption)
           OptionT(res)
         }.value
-        execMeta = mkExecutionMetadata(
-          mv,
-          request.replayTrace,
-          maybeTraceData,
-          appInfo,
-          response.resp.latency,
-          request.requestId
-        )
+        execMeta = metaWithoutTrace.copy(traceData = maybeTraceData)
         execInfo = ExecutionInformation(wrappedRequest.some, execMeta.some, wrappedResponse)
         _ <- monitoring.send(execInfo)
       } yield execMeta
+
+      flow.handleErrorWith { error =>
+        F.delay {
+          logger.error("Can't send data to shadow.", error)
+          metaWithoutTrace
+        }
+      }
     }
   }
 

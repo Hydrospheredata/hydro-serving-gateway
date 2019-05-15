@@ -5,9 +5,11 @@ import java.util.concurrent.TimeUnit
 import cats.Monad
 import cats.effect.{Clock, Sync}
 import cats.implicits._
+import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
+import io.hydrosphere.serving.monitoring.metadata.ExecutionMetadata
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
@@ -20,7 +22,7 @@ trait CloseablePredictor[F[_]] extends Predictor[F] {
   def close: F[Unit]
 }
 
-object Predictor {
+object Predictor extends Logging {
   def forServable[F[_]](
     servable: StoredServable,
     clientCtor: PredictionClient.Factory[F]
@@ -54,7 +56,7 @@ object Predictor {
     }
   }
 
-  def withShadow[F[_]: Monad](
+  def withShadow[F[_] : Sync](
     servable: StoredServable,
     servableExec: Predictor[F],
     shadow: MonitoringClient[F]
@@ -64,6 +66,10 @@ object Predictor {
         for {
           res <- servableExec.predict(request)
           _ <- shadow.monitor(request, AssociatedResponse(res, servable), None)
+            .handleErrorWith { err =>
+              Logging.error("Error while sending data to monitoring", err)
+                .as(ExecutionMetadata.defaultInstance)
+            }
         } yield res
       }
     }
