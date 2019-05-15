@@ -9,7 +9,7 @@ import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
-import io.hydrosphere.serving.monitoring.metadata.ExecutionMetadata
+import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
 
@@ -59,13 +59,14 @@ object Predictor extends Logging {
   def withShadow[F[_] : Sync](
     servable: StoredServable,
     servableExec: Predictor[F],
-    shadow: MonitoringClient[F]
+    shadow: MonitoringClient[F],
+    appInfo: Option[ApplicationInfo]
   ): Predictor[F] = {
     new Predictor[F] {
       override def predict(request: ServableRequest): F[ServableResponse] = {
         for {
           res <- servableExec.predict(request)
-          _ <- shadow.monitor(request, AssociatedResponse(res, servable), None)
+          _ <- shadow.monitor(request, AssociatedResponse(res, servable), appInfo)
             .handleErrorWith { err =>
               Logging.error("Error while sending data to monitoring", err)
                 .as(ExecutionMetadata.defaultInstance)

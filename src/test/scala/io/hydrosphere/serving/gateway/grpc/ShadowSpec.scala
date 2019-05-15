@@ -32,7 +32,7 @@ class ShadowSpec extends FunSpec with Matchers {
       }
     }
     val servablePredictor = Predictor.forServable[IO](servable, clientCtor).unsafeRunSync()
-    val shadowed = Predictor.withShadow(servable, servablePredictor, shadow)
+    val shadowed = Predictor.withShadow(servable, servablePredictor, shadow, None)
 
     val request = ServableRequest(
       data = Map(

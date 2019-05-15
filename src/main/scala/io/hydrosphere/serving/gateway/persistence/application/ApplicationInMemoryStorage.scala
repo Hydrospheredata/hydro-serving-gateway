@@ -2,7 +2,7 @@ package io.hydrosphere.serving.gateway.persistence.application
 
 import cats.effect.Concurrent
 import cats.implicits._
-import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.Types.PredictorCtor
 import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.servable.Predictor
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
@@ -12,7 +12,7 @@ import scala.collection.mutable
 
 class ApplicationInMemoryStorage[F[_]](
   rwLock: ReadWriteLock[F],
-  channelFactory: ServableCtor[F],
+  channelFactory: PredictorCtor[F],
   shadow: MonitoringClient[F],
   selector: ResponseSelector[F]
 )(implicit F: Concurrent[F]) extends ApplicationStorage[F] {

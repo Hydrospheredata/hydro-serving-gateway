@@ -50,7 +50,7 @@ class ServableInMemoryStorage[F[_]](
           case None =>
             for {
               exec <- Predictor.forServable(s, clientCtor)
-              shadowed = Predictor.withShadow(s, exec, shadow)
+              shadowed = Predictor.withShadow(s, exec, shadow, None)
               _ <- F.delay(servableState += s.name -> s)
               _ <- F.delay(servableCounter += s.name -> 1)
               _ <- F.delay(servableExecutors += s.name -> exec)

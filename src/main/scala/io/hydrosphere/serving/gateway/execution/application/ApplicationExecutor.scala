@@ -3,7 +3,7 @@ package io.hydrosphere.serving.gateway.execution.application
 import cats.data.{Kleisli, NonEmptyList}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
-import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.Types.PredictorCtor
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
 
@@ -41,7 +41,7 @@ object ApplicationExecutor {
   def appExecutor[F[_]](
     app: StoredApplication,
     shadow: MonitoringClient[F],
-    servableFactory: ServableCtor[F],
+    servableFactory: PredictorCtor[F],
     rng: ResponseSelector[F]
   )(implicit F: Concurrent[F]): F[Predictor[F]] = {
     for {

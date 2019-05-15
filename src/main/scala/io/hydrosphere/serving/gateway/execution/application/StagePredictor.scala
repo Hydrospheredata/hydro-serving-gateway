@@ -4,37 +4,34 @@ import cats.effect.Concurrent
 import cats.effect.implicits._
 import cats.implicits._
 import io.hydrosphere.serving.gateway.Logging
-import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.Types.PredictorCtor
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredStage}
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
+import io.hydrosphere.serving.monitoring.metadata.ApplicationInfo
 
 object StagePredictor extends Logging {
   def withShadow[F[_]](
     app: StoredApplication,
     stage: StoredStage,
-    servableCtor: ServableCtor[F],
+    servableCtor: PredictorCtor[F],
     shadow: MonitoringClient[F],
     selector: ResponseSelector[F]
   )(implicit F: Concurrent[F]): F[Predictor[F]] = {
     for {
-      downstream <- stage.servables.traverse(x => servableCtor(x).map(y => x -> y))
+      downstream <- stage.servables.traverse { x =>
+        for {
+          predictor <- servableCtor(x)
+        } yield x -> Predictor.withShadow(x, predictor, shadow, Some(ApplicationInfo(app.id, stage.id)))
+      }
     } yield {
       new Predictor[F] {
         def predict(request: ServableRequest): F[ServableResponse] = {
           for {
             results <- downstream.traverse {
-              case (servable, predictor) =>
-                val flow = for {
-                  res <- predictor.predict(request)
-                    .map(AssociatedResponse(_, servable))
-                  _ <- shadow.monitor(request, res, Some(ApplicationInfo(app.id, stage.id)))
-                    .recover { case x =>
-                      logger.error("Error sending monitoring data", x)
-                      ExecutionMetadata.defaultInstance
-                    }
-                } yield res
-                flow.start
+              case (s, predictor) =>
+                predictor.predict(request)
+                  .map(AssociatedResponse(_, s))
+                  .start
             }
             stageRes <- results.traverse(_.join)
             next <- selector.chooseOne(stageRes)

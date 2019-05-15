@@ -2,7 +2,7 @@ package io.hydrosphere.serving.gateway.persistence.application
 
 import cats.effect.{Async, Concurrent}
 import cats.implicits._
-import io.hydrosphere.serving.gateway.execution.Types.ServableCtor
+import io.hydrosphere.serving.gateway.execution.Types.PredictorCtor
 import io.hydrosphere.serving.gateway.execution.application.{MonitoringClient, ResponseSelector}
 import io.hydrosphere.serving.gateway.execution.servable.Predictor
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
@@ -21,7 +21,7 @@ trait ApplicationStorage[F[_]] {
 
 object ApplicationStorage {
   def makeInMemory[F[_]](
-    servableCtor: ServableCtor[F],
+    servableCtor: PredictorCtor[F],
     shadow: MonitoringClient[F],
     selector: ResponseSelector[F]
   )(implicit F: Concurrent[F]) = {

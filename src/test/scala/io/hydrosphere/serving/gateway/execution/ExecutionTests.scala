@@ -153,7 +153,7 @@ class ExecutionTests extends GenericTest {
         shadowState += entry
         IO(entry)
       }
-      val shadowed = Predictor.withShadow(servable, exec, shadow)
+      val shadowed = Predictor.withShadow(servable, exec, shadow, None)
       val requestData = Map(
         "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
       )
@@ -174,7 +174,7 @@ class ExecutionTests extends GenericTest {
       val storedStage = StoredStage("test-stage", NonEmptyList.of(servable1, servable2, servable3), ModelSignature.defaultInstance)
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage))
 
-      val servableCtor: Types.ServableCtor[IO] = { x =>
+      val servableCtor: Types.PredictorCtor[IO] = { x =>
         IO {
           _: ServableRequest =>
             IO {
@@ -279,7 +279,7 @@ class ExecutionTests extends GenericTest {
 
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage1, storedStage2))
 
-      val servableCtor: Types.ServableCtor[IO] = { x =>
+      val servableCtor: Types.PredictorCtor[IO] = { x =>
         IO {
           req: ServableRequest =>
             IO {

@@ -9,6 +9,6 @@ import io.hydrosphere.serving.tensorflow.tensor.TensorProto
 
 object Types {
   type MessageData = Map[String, TensorProto]
-  type ServableCtor[F[_]] = StoredServable => F[Predictor[F]]
+  type PredictorCtor[F[_]] = StoredServable => F[Predictor[F]]
   type ServingReqStore[F[_]] = ReqStore[F, (PredictRequest, ResponseOrError)]
 }
