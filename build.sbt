@@ -1,7 +1,7 @@
 import sbt._
 import Keys._
 
-name := "hydro-serving-gateway"
+name := "serving-gateway"
 version := sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
 
 organization := "io.hydrosphere.serving"
@@ -60,7 +60,7 @@ dockerfile in docker := {
 }
 
 imageNames in docker := Seq(
-  ImageName(s"hydrosphere/serving-gateway:${version.value}")
+  ImageName(s"hydrosphere/${name.value}:${version.value}")
 )
 
 enablePlugins(BuildInfoPlugin)

@@ -2,8 +2,10 @@ package io.hydrosphere.serving.gateway.api.grpc
 
 import cats.effect.{Effect, Resource}
 import cats.implicits._
+import io.grpc.Server
 import io.grpc.netty.NettyServerBuilder
 import io.hydrosphere.serving.gateway.Logging
+import io.hydrosphere.serving.gateway.api.GatewayServiceGrpc
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.util.GrpcUtil.BuilderWrapper
@@ -22,10 +24,13 @@ class GrpcApi[F[_]: Effect](
     .maxInboundMessageSize(appConfig.grpc.maxMessageSize))
 
   val predictionService = new PredictionServiceEndpoint[F](executionService)
+  val gatewayService = new GatewayServiceEndpoint[F](executionService)
+  builder.addService(PredictionServiceGrpc.bindService(predictionService, grpcEC))
+  builder.addService(GatewayServiceGrpc.bindService(gatewayService, grpcEC))
 
-  val server = builder.addService(PredictionServiceGrpc.bindService(predictionService, grpcEC)).build
+  val server: Server = builder.build
 
-  def start() = for {
+  def start(): F[Server] = for {
     s <- Effect[F].delay(server.start())
     _ <- Logging.info(s"Starting GRPC API server @ 0.0.0.0:${appConfig.grpc.port}")
   } yield s
@@ -36,7 +41,7 @@ object GrpcApi {
     appConfig: ApplicationConfig,
     predictService: ExecutionService[F],
     grpcEC: ExecutionContext
-  )(implicit F: Effect[F]) = {
+  )(implicit F: Effect[F]): Resource[F, GrpcApi[F]] = {
     val res = F.delay(new GrpcApi[F](appConfig, predictService, grpcEC))
     Resource.make(res)(x => F.delay(x.server.shutdown()))
   }
