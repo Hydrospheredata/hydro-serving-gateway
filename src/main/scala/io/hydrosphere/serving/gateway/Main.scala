@@ -1,74 +1,121 @@
 package io.hydrosphere.serving.gateway
 
-import java.util.concurrent.TimeUnit
-
-import cats.effect.IO
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import cats.effect._
+import cats.syntax.functor._
+import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
-import io.hydrosphere.serving.gateway.grpc.{GrpcApi, Prediction}
-import io.hydrosphere.serving.gateway.http.HttpApi
-import io.hydrosphere.serving.gateway.persistence.application.ApplicationInMemoryStorage
-import io.hydrosphere.serving.gateway.service.application.ApplicationExecutionServiceImpl
-import org.apache.logging.log4j.scala.Logging
+import io.hydrosphere.serving.gateway.api.grpc.GrpcApi
+import io.hydrosphere.serving.gateway.api.http.HttpApi
+import io.hydrosphere.serving.gateway.execution.ExecutionService
+import io.hydrosphere.serving.gateway.integrations.Monitoring
+import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
+import io.hydrosphere.serving.gateway.execution.application.{MonitoringClient, ResponseSelector}
+import io.hydrosphere.serving.gateway.execution.grpc.{GrpcChannel, PredictionClient}
+import io.hydrosphere.serving.gateway.util.{RandomNumberGenerator, UUIDGenerator}
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.core.LoggerContext
+import org.apache.logging.log4j.core.config.Configurator
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.ExecutionContext
+
+// TODO: API for root cause (predict servable without shadow)
+// TODO: API for replay (need to add timestamps and override if neccessary)
+// TODO: merge circuit breaker changes
+object Main extends IOApp with Logging {
+  def application[F[_]](config: ApplicationConfig)(
+    implicit F: ConcurrentEffect[F],
+    timer: Timer[F],
+    cs: ContextShift[F],
+    ec: ExecutionContext,
+    actorSystem: ActorSystem
+  ) = {
+    implicit val clock: Clock[F] = timer.clock
+    implicit val uuidGen: UUIDGenerator[F] = UUIDGenerator[F]
+    for {
+      _ <- Resource.liftF(Logging.info[F](s"Hydroserving gateway service ${BuildInfo.version}"))
+      _ <- Resource.liftF(Logging.debug[F](s"Initializing application storage"))
+
+      channelCtor = GrpcChannel.grpc[F]
+      clientCtor = PredictionClient.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
 
 
-object Main extends App with Logging {
+      reqStore <- Resource.liftF(MonitoringClient.mkReqStore(config.reqstore))
+      monitoring = Monitoring.default(config.apiGateway, config.grpc.deadline, config.grpc.maxMessageSize)
+      shadow = MonitoringClient.make(monitoring, reqStore)
 
-  implicit val contextShift = IO.contextShift(scala.concurrent.ExecutionContext.global)
-  implicit val timer = IO.timer(scala.concurrent.ExecutionContext.global)
+      rng <- Resource.liftF(RandomNumberGenerator.default)
+      responseSelector = ResponseSelector.randomSelector(F, rng)
 
-  logger.info("Hydroserving gateway service")
-  try {
+      servableStorage <- Resource.liftF(ServableStorage.makeInMemory[F](clientCtor, shadow))
+      appStorage <- Resource.liftF(ApplicationStorage.makeInMemory[F](servableStorage.getExecutor, shadow, responseSelector))
+      appUpdater <- Resource.liftF(DiscoveryService.makeDefault[F](
+        config.apiGateway,
+        config.grpc.deadline,
+        appStorage,
+        servableStorage
+      ))
 
-    import io.hydrosphere.serving.gateway.config.Inject._
+      _ <- Resource.liftF(Logging.debug[F]("Initializing app execution service"))
+      predictionService <- Resource.liftF(ExecutionService.makeDefault(
+        appStorage,
+        servableStorage
+      ))
 
+      grpcApi <- GrpcApi.makeAsResource(config, predictionService, ec)
+      _ <- Resource.liftF(Logging.info[F]("Initialized GRPC API"))
+
+      httpApi <- Resource.liftF(F.delay {
+        implicit val mat: ActorMaterializer = ActorMaterializer()
+        new HttpApi(config, predictionService, appStorage, servableStorage)
+      })
+      _ <- Resource.liftF(Logging.info[F]("Initialized HTTP API"))
+
+    } yield grpcApi -> httpApi
+  }
+
+
+  override def run(args: List[String]): IO[ExitCode] = IO.suspend {
     implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.Implicits.global
-
-    logger.debug(s"Setting up GRPC sidecar channel")
-
-    logger.debug(s"Initializing application storage")
-    val applicationStorage = new ApplicationInMemoryStorage[IO]()
-
-    logger.debug(s"Initializing application update service")
-    val applicationUpdater = new DiscoveryService(
-      appConfig.application.apiGateway,
-      appConfig.application.grpc.deadline,
-      applicationStorage
-    )
-
-    val grpcAlg = Prediction.create[IO](appConfig).unsafeRunSync()
-
-    logger.debug("Initializing app execution service")
-    val gatewayPredictionService = new ApplicationExecutionServiceImpl(
-      appConfig.application,
-      applicationStorage,
-      grpcAlg
-    )
-
-    val grpcApi = new GrpcApi(appConfig.application, gatewayPredictionService, ec)
-
-    val httpApi = new HttpApi(appConfig.application, gatewayPredictionService)
-
-    sys addShutdownHook {
-      logger.info("Terminating actor system")
-      actorSystem.terminate()
-      logger.info("Shutting down server")
-      grpcApi.server.shutdown()
-      try {
-        grpcApi.server.awaitTermination(30, TimeUnit.SECONDS)
-        Await.ready(httpApi.system.whenTerminated, Duration(30, TimeUnit.SECONDS))
-      } catch {
-        case e: Throwable =>
-          logger.error("Error on terminate", e)
-          sys.exit(1)
+    val appResource = for {
+      actorSystem <- Resource.make(IO(ActorSystem("hydroserving-gateway")))(x => IO.fromFuture(IO(x.terminate())).as(()))
+      _ <- Resource.liftF(Logging.info[IO]("Reading configuration"))
+      appConfig <- Resource.liftF(Configuration.load[IO])
+      _ <- Resource.liftF(Logging.info[IO](s"Configuration: $appConfig"))
+      res <- {
+        implicit val as = actorSystem
+        application[IO](appConfig.application)
       }
+
+    } yield res
+
+    appResource.use {
+      case (grpcApi, httpApi) =>
+        for {
+          _ <- httpApi.start()
+          _ <- grpcApi.start()
+          _ <- Logging.info[IO]("Initialization completed")
+          _ <- IO.never
+        } yield ExitCode.Success
+    }.guaranteeCase {
+      case ExitCase.Completed =>
+        Logging.warn[IO]("Exiting application normally")
+      case ExitCase.Canceled =>
+        Logging.warn[IO]("Application is cancelled")
+      case ExitCase.Error(err) =>
+        Logging.error[IO]("Application failure", err)
+    }.map { x =>
+      sys.addShutdownHook {
+        LogManager.getContext match {
+          case context: LoggerContext =>
+            logger.debug("Shutting down log4j2")
+            Configurator.shutdown(context)
+          case _ => logger.warn("Unable to shutdown log4j2")
+        }
+      }
+      x
     }
-    logger.info("Initialization completed")
-  } catch {
-    case e: Throwable =>
-      logger.error("Fatal error", e)
-      sys.exit(1)
   }
 }

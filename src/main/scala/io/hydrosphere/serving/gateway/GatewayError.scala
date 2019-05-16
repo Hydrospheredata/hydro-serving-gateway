@@ -11,6 +11,8 @@ object GatewayError {
 
   case class InvalidArgument(msg: String) extends GatewayError
 
+  case class NotSupported(msg: String) extends GatewayError
+
   case class InternalError(msg: String) extends GatewayError
 
   case class InvalidTensorShape(msg: String) extends GatewayError

@@ -1,19 +1,12 @@
 import sbt._
 import Keys._
 
-name := "hydro-serving-gateway"
-
-scalaVersion := "2.12.6"
-
-lazy val currentAppVersion = sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
-
+name := "serving-gateway"
+version := sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
 
 organization := "io.hydrosphere.serving"
 organizationName := "hydrosphere"
 organizationHomepage := Some(url("https://hydrosphere.io"))
-
-name := "hydro-serving-gateway"
-version := currentAppVersion
 
 parallelExecution in Test := false
 parallelExecution in IntegrationTest := false
@@ -40,11 +33,7 @@ mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
 resolvers += Resolver.bintrayRepo("findify", "maven")
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 
-exportJars := false
-resolvers += Resolver.bintrayRepo("findify", "maven")
-resolvers += Resolver.bintrayRepo("hseeberger", "maven")
-
-libraryDependencies ++= Dependencies.hydroServingGatewayDependencies
+libraryDependencies ++= Dependencies.all
 
 enablePlugins(sbtdocker.DockerPlugin)
 
@@ -55,7 +44,7 @@ dockerfile in docker := {
   val jarTarget = s"/hydro-serving/app/app.jar"
 
   new Dockerfile {
-    from("openjdk:8u151-jre-alpine")
+    from("openjdk:8-jre-alpine")
 
     env("APP_PORT", "9090")
 
@@ -71,7 +60,7 @@ dockerfile in docker := {
 }
 
 imageNames in docker := Seq(
-  ImageName(s"hydrosphere/serving-gateway:${version.value}")
+  ImageName(s"hydrosphere/${name.value}:${version.value}")
 )
 
 enablePlugins(BuildInfoPlugin)
