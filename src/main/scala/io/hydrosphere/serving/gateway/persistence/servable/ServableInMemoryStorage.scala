@@ -69,7 +69,7 @@ class ServableInMemoryStorage[F[_]](
               _ <- F.delay(monitorableExecutors += s.name -> shadowed)
             } yield ()
         }
-      }.as(F.unit)
+      }.void
     }
   }
 
@@ -92,7 +92,7 @@ class ServableInMemoryStorage[F[_]](
             }
           case None => F.unit
         }
-      }.as(F.unit)
+      }.void
     }
   }
 

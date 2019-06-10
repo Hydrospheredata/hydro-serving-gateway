@@ -42,7 +42,7 @@ class ApplicationInMemoryStorage[F[_]](
           applicationsByName += app.name -> app
           executors += app.name -> pipelineExec
         }
-      }.as(F.unit)
+      }.void
     }
   }
 
