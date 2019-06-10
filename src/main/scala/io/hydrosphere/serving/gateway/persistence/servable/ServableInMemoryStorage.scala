@@ -1,5 +1,6 @@
 package io.hydrosphere.serving.gateway.persistence.servable
 
+import cats.data.OptionT
 import cats.effect.{Clock, Sync}
 import cats.implicits._
 import io.hydrosphere.serving.gateway.execution.application.MonitoringClient
@@ -46,6 +47,17 @@ class ServableInMemoryStorage[F[_]](
             for {
               oldCounter <- F.delay(servableCounter.getOrElseUpdate(s.name, 0))
               _ <- F.delay(servableCounter.update(s.name, oldCounter + 1))
+
+              _ <- F.delay(servableState.update(s.name, s))
+
+              _ <- OptionT(F.delay(servableExecutors.get(s.name)))
+                .flatMap(x => OptionT.liftF(x.close)).value
+
+              exec <- Predictor.forServable(s, clientCtor)
+              shadowed = Predictor.withShadow(s, exec, shadow, None)
+
+              _ <- F.delay(servableExecutors.update(s.name, exec))
+              _ <- F.delay(monitorableExecutors.update(s.name,shadowed))
             } yield ()
           case None =>
             for {
