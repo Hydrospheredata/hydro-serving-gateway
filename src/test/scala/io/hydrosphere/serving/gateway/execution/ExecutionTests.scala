@@ -50,7 +50,7 @@ class ExecutionTests extends GenericTest {
       }
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
-      servableStorage.add(Seq(StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
+      servableStorage.add(Seq(StoredServable("s1", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
 
       val appStorage = new ApplicationStorage[IO] {
         override def getByName(name: String): IO[Option[StoredApplication]] = ???
@@ -96,7 +96,7 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val servable = StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
+      val servable = StoredServable("s1", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
 
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
@@ -145,7 +145,7 @@ class ExecutionTests extends GenericTest {
         }
       }
       val mv = StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")
-      val servable = StoredServable("AYAYA", 420, 100, mv)
+      val servable = StoredServable("s1", "AYAYA", 420, 100, mv)
       val exec = Predictor.forServable(servable, clientCtor).unsafeRunSync()
       val shadowState = ListBuffer.empty[ExecutionMetadata]
       val shadow: MonitoringClient[IO] = (req, resp, appInfo) => {
@@ -168,9 +168,9 @@ class ExecutionTests extends GenericTest {
     }
 
     it("Stage execution") {
-      val servable1 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "test", ModelSignature.defaultInstance, "Ok"))
-      val servable2 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "test", ModelSignature.defaultInstance, "Ok"))
-      val servable3 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable1 = StoredServable("s1", "A", 420, 100, StoredModelVersion(1, 1, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable2 = StoredServable("s2", "AY", 420, 100, StoredModelVersion(2, 2, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable3 = StoredServable("s3", "AYA", 420, 100, StoredModelVersion(3, 3, "test", ModelSignature.defaultInstance, "Ok"))
       val storedStage = StoredStage("test-stage", NonEmptyList.of(servable1, servable2, servable3), ModelSignature.defaultInstance)
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage))
 
@@ -267,14 +267,14 @@ class ExecutionTests extends GenericTest {
     }
 
     it("Application executor") {
-      val servable11 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "a", ModelSignature.defaultInstance, "Ok"))
-      val servable12 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "a", ModelSignature.defaultInstance, "Ok"))
-      val servable13 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable11 = StoredServable("s1", "A", 420, 100, StoredModelVersion(1, 1, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable12 = StoredServable("s2", "AY", 420, 100, StoredModelVersion(2, 2, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable13 = StoredServable("s3", "AYA", 420, 100, StoredModelVersion(3, 3, "a", ModelSignature.defaultInstance, "Ok"))
       val storedStage1 = StoredStage("test-stage-1", NonEmptyList.of(servable11, servable12, servable13), ModelSignature.defaultInstance)
 
-      val servable21 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "b", ModelSignature.defaultInstance, "Ok"))
-      val servable22 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "b", ModelSignature.defaultInstance, "Ok"))
-      val servable23 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable21 = StoredServable("s4", "A", 420, 100, StoredModelVersion(1, 1, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable22 = StoredServable("s5", "AY", 420, 100, StoredModelVersion(2, 2, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable23 = StoredServable("s6", "AYA", 420, 100, StoredModelVersion(3, 3, "b", ModelSignature.defaultInstance, "Ok"))
       val storedStage2 = StoredStage("test-stage-2", NonEmptyList.of(servable21, servable22, servable23), ModelSignature.defaultInstance)
 
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage1, storedStage2))

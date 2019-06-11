@@ -16,7 +16,7 @@ import org.scalatest.{FunSpec, Matchers}
 class ShadowSpec extends FunSpec with Matchers {
   implicit val clock = Clock.create[IO]
   it("reqstore shouldn't affect prediction") {
-    val servable = StoredServable("host", 42, 100, StoredModelVersion(1, 1, "model", ModelSignature.defaultInstance, "Ok"))
+    val servable = StoredServable("servable-1", "host", 42, 100, StoredModelVersion(1, 1, "model", ModelSignature.defaultInstance, "Ok"))
     val clientCtor = new PredictionClient.Factory[IO] {
       override def make(host: String, port: Int): IO[PredictionClient[IO]] = {
         IO(new PredictionClient[IO] {

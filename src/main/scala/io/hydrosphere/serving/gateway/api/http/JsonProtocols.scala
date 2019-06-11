@@ -122,7 +122,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
 
   implicit val storedModelVersion = jsonFormat5(StoredModelVersion.apply)
 
-  implicit val gwService = jsonFormat4(StoredServable.apply)
+  implicit val gwService = jsonFormat5(StoredServable.apply)
 
   implicit def nelFormat[A: RootJsonFormat] = new RootJsonFormat[NonEmptyList[A]] {
     override def write(obj: NonEmptyList[A]): JsValue = {
