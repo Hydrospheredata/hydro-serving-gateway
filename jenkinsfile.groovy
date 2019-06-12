@@ -1,25 +1,16 @@
-def repository = 'hydro-serving-gateway'
-
-def buildFunction={
-    sh "sbt test"
-    sh "sbt docker"
+pipeline {
+  stages {
+    stage("trigger-central") {
+      build job: 'provectus/hydro-central/master', parameters: [
+          [$class: 'StringParameterValue',
+            name: 'repo',
+            value: 'gateway'
+          ],
+          [$class: 'StringParameterValue',
+            name: 'branch',
+            value: env.BRANCH_NAME
+          ]
+      ]
+    }
+  }
 }
-
-def collectTestResults = {
-    junit testResults: '**/target/test-reports/io.hydrosphere*.xml', allowEmptyResults: true
-}
-
-pipelineCommon(
-        repository,
-        false, //needSonarQualityGate,
-        ["hydrosphere/serving-gateway"],
-        collectTestResults,
-        buildFunction,
-        buildFunction,
-        buildFunction,
-        null,
-        "",
-        "",
-        {},
-        commitToCD("gateway")
-)
