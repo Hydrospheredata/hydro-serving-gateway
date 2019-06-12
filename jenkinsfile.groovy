@@ -1,7 +1,7 @@
 node("CentralNode") {
 
   stage("trigger-central") {
-    build job: 'provectus/hydro-central/master', parameters: [
+    build job: 'provectus.com/hydro-central/master', parameters: [
       [$class: 'StringParameterValue',
       name: 'repo',
       value: 'gateway'
