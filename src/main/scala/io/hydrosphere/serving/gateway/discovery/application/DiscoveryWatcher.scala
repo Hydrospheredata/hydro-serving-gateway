@@ -44,7 +44,7 @@ class DiscoveryWatcher[F[_]](
   def disconnected: Receive = {
     case Connect =>
       Try(connect()) match {
-        case scala.util.Success(v) => context become listening(v)
+        case scala.util.Success((app, serv)) => context become listening(app, serv)
         case scala.util.Failure(e) =>
           log.error(e, s"Can't setup discovery connection")
           timers.startSingleTimer("connect", Connect, apiGatewayConf.reconnectTimeout)
@@ -52,7 +52,7 @@ class DiscoveryWatcher[F[_]](
   }
 
 
-  def listening(response: StreamObserver[Empty]): Receive = {
+  def listening(appResponse: StreamObserver[Empty], servableResponse: StreamObserver[Empty]): Receive = {
     case resp: ApplicationDiscoveryEvent => handleAppEvent(resp)
 
     case ev: ServableDiscoveryEvent => handleServableEvent(ev)
@@ -64,6 +64,8 @@ class DiscoveryWatcher[F[_]](
       }
       timers.startSingleTimer("connect", Connect, apiGatewayConf.reconnectTimeout)
       context become disconnected
+    case x =>
+      log.debug(s"Unknown message: $x")
   }
 
   def handleServableEvent(ev: ServableDiscoveryEvent): Unit = {
@@ -114,7 +116,7 @@ class DiscoveryWatcher[F[_]](
     upd.toIO.unsafeRunSync()
   }
 
-  private def connect(): StreamObserver[Empty] = {
+  private def connect() = {
     val appObserver = new StreamObserver[ApplicationDiscoveryEvent] {
       override def onError(e: Throwable): Unit = {
         self ! ConnectionFailed(Option(e))
@@ -141,8 +143,9 @@ class DiscoveryWatcher[F[_]](
         self ! ConnectionFailed(None)
       }
     }
-    stub.watchApplications(appObserver)
-    stub.watchServables(sObserver)
+    val apps = stub.watchApplications(appObserver)
+    val serv = stub.watchServables(sObserver)
+    (apps, serv)
   }
 
   override def preRestart(reason: Throwable, message: Option[Any]) {
