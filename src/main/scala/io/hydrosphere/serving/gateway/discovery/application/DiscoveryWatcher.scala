@@ -1,19 +1,19 @@
 package io.hydrosphere.serving.gateway.discovery.application
 
 import akka.actor.{Actor, ActorLogging, Props, Timers}
-import cats.Traverse
+import cats.data.Chain
 import cats.effect.Effect
-import cats.implicits._
 import cats.effect.implicits._
+import cats.implicits._
 import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
 import io.hydrosphere.serving.discovery.serving.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
-import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredServable}
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
+import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredServable}
 
 import scala.concurrent.duration.Duration
 import scala.util.Try
@@ -70,20 +70,20 @@ class DiscoveryWatcher[F[_]](
     log.debug(s"Servable stream update: $ev")
     val converted = ev.added.map(s => StoredServable.parse(s))
     val (addedServables, parsingErrors) =
-      converted.foldLeft((List.empty[StoredServable], List.empty[String])) {
-        case ((_valid, _invalid), Left(e)) => (_valid, e :: _invalid)
-        case ((_valid, _invalid), Right(v)) => (v :: _valid, _invalid)
+      converted.foldLeft((Chain.empty[StoredServable], Chain.empty[String])) {
+        case ((_valid, _invalid), Left(e)) => (_valid, _invalid.prepend(e))
+        case ((_valid, _invalid), Right(v)) => (_valid.prepend(v), _invalid)
       }
-    parsingErrors.foreach { msg =>
+    parsingErrors.map { msg =>
       log.error(s"Received invalid servable. $msg".slice(0, 512))
     }
-    addedServables.foreach { servable =>
+    addedServables.map { servable =>
       log.info(s"Received servable: $servable".slice(0, 512))
     }
     val removed = ev.removedIdx.toList
       log.info(s"Removed servables: $removed")
     val upd = for {
-      _ <- servableStorage.add(addedServables)
+      _ <- servableStorage.add(addedServables.toList)
       _ <- servableStorage.remove(removed)
     } yield ()
     upd.toIO.unsafeRunSync()
@@ -93,22 +93,22 @@ class DiscoveryWatcher[F[_]](
     log.debug(s"Application stream update: $resp")
     val converted = resp.added.map(app => StoredApplication.parse(app))
     val (addedApplications, parsingErrors) =
-      converted.foldLeft((List.empty[StoredApplication], List.empty[String]))({
-        case ((_valid, _invalid), Left(e)) => (_valid, e :: _invalid)
-        case ((_valid, _invalid), Right(v)) => (v :: _valid, _invalid)
+      converted.foldLeft((Chain.empty[StoredApplication], Chain.empty[String]))({
+        case ((_valid, _invalid), Left(e)) => (_valid, _invalid.prepend(e))
+        case ((_valid, _invalid), Right(v)) => (_valid.prepend(v), _invalid)
       })
 
-    parsingErrors.foreach { msg =>
+    parsingErrors.map { msg =>
       log.error(s"Received invalid application. $msg".slice(0, 512))
     }
 
-    addedApplications.foreach { app =>
+    addedApplications.map { app =>
       log.info(s"Received application: $app".slice(0, 512))
     }
 
     val upd = for {
       parsedRemovedIds <- resp.removedIds.toList.traverse(x => F.fromTry(Try(x.toLong)))
-      _ <- applicationStorage.addApps(addedApplications)
+      _ <- applicationStorage.addApps(addedApplications.toList)
       _ <- applicationStorage.removeApps(parsedRemovedIds)
     } yield ()
     upd.toIO.unsafeRunSync()
