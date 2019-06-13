@@ -113,4 +113,10 @@ class ServableInMemoryStorage[F[_]](
       F.delay(monitorableExecutors.get(s"$modelName:$modelVersion"))
     }
   }
+
+  override def getExecutor(servableName: String): F[Option[Predictor[F]]] = {
+    lock.read.use { _ =>
+      F.delay(servableExecutors.get(servableName))
+    }
+  }
 }

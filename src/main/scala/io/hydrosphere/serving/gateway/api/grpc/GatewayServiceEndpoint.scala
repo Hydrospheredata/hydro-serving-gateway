@@ -6,7 +6,7 @@ import cats.effect.implicits._
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.api.GatewayServiceGrpc.GatewayService
-import io.hydrosphere.serving.gateway.api.ReplayRequest
+import io.hydrosphere.serving.gateway.api.{ReplayRequest, ServablePredictRequest}
 import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.monitoring.metadata.TraceData
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
@@ -17,8 +17,8 @@ import scala.concurrent.Future
 class GatewayServiceEndpoint[F[_]](
   executor: ExecutionService[F]
 )(implicit F: Effect[F]) extends GatewayService with Logging {
-  override def predictModelOnly(request: PredictRequest): Future[PredictResponse] = {
-    logger.info(s"Got request from GRPC. modelSpec=${request.modelSpec}")
+  override def shadowlessPredict(request: PredictRequest): Future[PredictResponse] = {
+    logger.info(s"Got shadowless request from GRPC. modelSpec=${request.modelSpec}")
     executor.predictWithoutShadow(request)
       .attempt
       .map {
@@ -52,6 +52,14 @@ class GatewayServiceEndpoint[F[_]](
           error.asLeft
       }
       .rethrow.toIO.unsafeToFuture()
+  }
+
+  override def predictServable(request: ServablePredictRequest): Future[PredictResponse] = {
+    logger.info(s"Got servable predict request. servable=${request.servableName}")
+    val flow = for {
+      resp <- executor.predictServable(request.data, request.servableName)
+    } yield resp
+    flow.toIO.unsafeToFuture()
   }
 }
 

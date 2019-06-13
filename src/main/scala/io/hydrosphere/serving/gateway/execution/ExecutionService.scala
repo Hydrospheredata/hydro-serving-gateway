@@ -4,6 +4,7 @@ import cats.data.OptionT
 import cats.effect.Sync
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
+import io.hydrosphere.serving.gateway.execution.Types.MessageData
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest}
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
@@ -23,6 +24,8 @@ trait ExecutionService[F[_]] {
   def predict(data: PredictRequest): F[PredictResponse]
 
   def predictWithoutShadow(data: PredictRequest): F[PredictResponse]
+
+  def predictServable(data: MessageData, name: String): F[PredictResponse]
 
   def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse]
 
@@ -98,6 +101,16 @@ object ExecutionService {
           case None =>
             F.raiseError(GatewayError.NotSupported("Replay for applications is not supported"))
         }
+      }
+
+      override def predictServable(data: MessageData, name: String): F[PredictResponse] = {
+        for {
+          servable <- OptionT(servableStorage.getExecutor(name))
+            .getOrElseF(F.raiseError(GatewayError.NotFound(s"Servable $name not found")))
+          id <- uuid.random.map(_.toString)
+          res <- servable.predict(ServableRequest(data, id))
+          response <- F.fromEither(res.data)
+        } yield PredictResponse(response)
       }
     }
   }

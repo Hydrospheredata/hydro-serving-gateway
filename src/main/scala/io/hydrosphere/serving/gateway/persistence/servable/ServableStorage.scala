@@ -10,6 +10,7 @@ import io.hydrosphere.serving.gateway.util.ReadWriteLock
 
 trait ServableStorage[F[_]] {
   def getExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]]
+  def getExecutor(servableName: String): F[Option[Predictor[F]]]
   def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]]
 
   def get(name: String): F[Option[StoredServable]]
