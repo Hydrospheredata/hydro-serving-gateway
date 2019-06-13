@@ -8,10 +8,10 @@ import cats.effect.implicits._
 import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.discovery.serving.{ServingDiscoveryGrpc, WatchResp}
+import io.hydrosphere.serving.discovery.serving.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
-import io.hydrosphere.serving.gateway.persistence.StoredApplication
+import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredServable}
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 
@@ -51,8 +51,11 @@ class DiscoveryWatcher[F[_]](
       }
   }
 
+
   def listening(response: StreamObserver[Empty]): Receive = {
-    case resp: WatchResp => handleResp(resp)
+    case resp: ApplicationDiscoveryEvent => handleAppEvent(resp)
+
+    case ev: ServableDiscoveryEvent => handleServableEvent(ev)
 
     case ConnectionFailed(maybeE) =>
       maybeE match {
@@ -63,8 +66,31 @@ class DiscoveryWatcher[F[_]](
       context become disconnected
   }
 
-  private def handleResp(resp: WatchResp): Unit = {
-    log.debug(s"Discovery stream update: $resp")
+  def handleServableEvent(ev: ServableDiscoveryEvent): Unit = {
+    log.debug(s"Servable stream update: $ev")
+    val converted = ev.added.map(s => StoredServable.parse(s))
+    val (addedServables, parsingErrors) =
+      converted.foldLeft((List.empty[StoredServable], List.empty[String])) {
+        case ((_valid, _invalid), Left(e)) => (_valid, e :: _invalid)
+        case ((_valid, _invalid), Right(v)) => (v :: _valid, _invalid)
+      }
+    parsingErrors.foreach { msg =>
+      log.error(s"Received invalid servable. $msg".slice(0, 512))
+    }
+    addedServables.foreach { servable =>
+      log.info(s"Received servable: $servable".slice(0, 512))
+    }
+    val removed = ev.removedIdx.toList
+      log.info(s"Removed servables: $removed")
+    val upd = for {
+      _ <- servableStorage.add(addedServables)
+      _ <- servableStorage.remove(removed)
+    } yield ()
+    upd.toIO.unsafeRunSync()
+  }
+
+  private def handleAppEvent(resp: ApplicationDiscoveryEvent): Unit = {
+    log.debug(s"Application stream update: $resp")
     val converted = resp.added.map(app => StoredApplication.parse(app))
     val (addedApplications, parsingErrors) =
       converted.foldLeft((List.empty[StoredApplication], List.empty[String]))({
@@ -81,32 +107,42 @@ class DiscoveryWatcher[F[_]](
     }
 
     val upd = for {
-      parsedRemovedIds <- Traverse[List].traverse(resp.removedIds.toList) { x => F.fromTry(Try(x.toLong)) }
-      addedServables = addedApplications.flatMap(_.stages.toList.flatMap(_.servables.toList))
-      _ <- servableStorage.add(addedServables)
+      parsedRemovedIds <- resp.removedIds.toList.traverse(x => F.fromTry(Try(x.toLong)))
       _ <- applicationStorage.addApps(addedApplications)
-      removed <- applicationStorage.removeApps(parsedRemovedIds)
-      removedServables = removed.flatMap(s => s.stages.toList.flatMap(_.servables.toList))
-      _ <- servableStorage.remove(removedServables.map(_.name))
+      _ <- applicationStorage.removeApps(parsedRemovedIds)
     } yield ()
     upd.toIO.unsafeRunSync()
   }
 
   private def connect(): StreamObserver[Empty] = {
-    val observer = new StreamObserver[WatchResp] {
+    val appObserver = new StreamObserver[ApplicationDiscoveryEvent] {
       override def onError(e: Throwable): Unit = {
-        self ! ConnectionFailed(Some(e))
+        self ! ConnectionFailed(Option(e))
       }
 
       override def onCompleted(): Unit = {
         self ! ConnectionFailed(None)
       }
 
-      override def onNext(resp: WatchResp): Unit = {
-        self ! resp
+      override def onNext(value: ApplicationDiscoveryEvent): Unit = {
+        self ! value
       }
     }
-    stub.watch(observer)
+    val sObserver = new StreamObserver[ServableDiscoveryEvent] {
+      override def onNext(value: ServableDiscoveryEvent): Unit = {
+        self ! value
+      }
+
+      override def onError(t: Throwable): Unit = {
+        self ! ConnectionFailed(Option(t))
+      }
+
+      override def onCompleted(): Unit = {
+        self ! ConnectionFailed(None)
+      }
+    }
+    stub.watchApplications(appObserver)
+    stub.watchServables(sObserver)
   }
 
   override def preRestart(reason: Throwable, message: Option[Any]) {
