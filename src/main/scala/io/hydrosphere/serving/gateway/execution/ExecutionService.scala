@@ -28,8 +28,6 @@ trait ExecutionService[F[_]] {
   def predictServable(data: MessageData, name: String): F[PredictResponse]
 
   def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse]
-
-  def selectPredictor(spec: ModelSpec): F[Predictor[F]]
 }
 
 object ExecutionService {
@@ -48,23 +46,13 @@ object ExecutionService {
         } yield res
       }
 
-      override def selectPredictor(spec: ModelSpec): F[Predictor[F]] = {
-        spec.version match {
-          case Some(version) =>
-            OptionT(servableStorage.getShadowedExecutor(spec.name, version))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable with name ${spec.name} and version $version")))
-          case None =>
-            OptionT(appStorage.getExecutor(spec.name))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find application with name ${spec.name}")))
-        }
-      }
-
       override def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
-          executor <- selectPredictor(modelSpec)
+          executor <- OptionT(servableStorage.getExecutor(modelSpec.name))
+            .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable ${modelSpec.name}")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
             data = validated,

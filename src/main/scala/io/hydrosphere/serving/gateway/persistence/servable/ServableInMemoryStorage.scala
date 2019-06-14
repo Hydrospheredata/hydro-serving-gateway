@@ -33,9 +33,6 @@ class ServableInMemoryStorage[F[_]](
   override def get(name: String): F[Option[StoredServable]] =
     lock.read.use(_ => F.delay(servableState.get(name)))
 
-  override def getByModelVersion(name: String, version: Long): F[Option[StoredServable]] =
-    lock.read.use(_ => F.delay(servableState.get(s"$name:$version")))
-
   override def add(servables: Seq[StoredServable]): F[Unit] = {
     lock.write.use { _ =>
       servables.toList.traverse[F, Unit] { s =>
@@ -85,15 +82,9 @@ class ServableInMemoryStorage[F[_]](
     }
   }
 
-  override def getExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]] = {
+  override def getShadowedExecutor(servableName: String): F[Option[Predictor[F]]] = {
     lock.read.use { _ =>
-      F.delay(servableExecutors.get(s"$modelName:$modelVersion"))
-    }
-  }
-
-  override def getShadowedExecutor(modelName: String, modelVersion: Long): F[Option[Predictor[F]]] = {
-    lock.read.use { _ =>
-      F.delay(monitorableExecutors.get(s"$modelName:$modelVersion"))
+      F.delay(monitorableExecutors.get(servableName))
     }
   }
 
