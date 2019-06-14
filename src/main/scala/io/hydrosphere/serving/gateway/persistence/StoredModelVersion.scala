@@ -9,7 +9,9 @@ case class StoredModelVersion(
   name: String,
   predict: ModelSignature,
   status: String
-)
+) {
+  def fullName = s"$name-$version"
+}
 
 object StoredModelVersion {
   def parse(mv: ModelVersion): Either[String, StoredModelVersion] = {

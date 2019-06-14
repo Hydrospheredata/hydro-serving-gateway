@@ -3,13 +3,13 @@ package io.hydrosphere.serving.gateway.persistence
 import io.hydrosphere.serving.manager.grpc.entities.Servable
 
 case class StoredServable(
+  name: String,
   host: String,
   port: Int,
   weight: Int,
   modelVersion: StoredModelVersion
-) {
-  def name: String = modelVersion.name + ":" + modelVersion.version // TODO check in manager if this is true
-}
+)
+
 
 object StoredServable {
   def parse(servable: Servable): Either[String, StoredServable] = {
@@ -18,6 +18,7 @@ object StoredServable {
       parsedMv <- StoredModelVersion.parse(mv)
     } yield
       StoredServable(
+        name = servable.name,
         host = servable.host,
         port = servable.port,
         weight = servable.weight,

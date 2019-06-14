@@ -34,7 +34,6 @@ trait GenericController extends JsonProtocols with Logging with Directives {
 
   def jsonToRequest[F[_]](
     name: String,
-    version: Option[Long],
     inputs: JsObject,
     signanture: ModelSignature
   )(implicit F: Sync[F]): F[PredictRequest] = F.defer {
@@ -47,7 +46,6 @@ trait GenericController extends JsonProtocols with Logging with Directives {
             ModelSpec(
               name = name,
               signatureName = signanture.signatureName,
-              version = version
             )
           ),
           inputs = tensors.mapValues(_.toProto)

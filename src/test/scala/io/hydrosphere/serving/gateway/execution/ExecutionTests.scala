@@ -8,11 +8,11 @@ import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
-import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationInMemoryStorage, ApplicationStorage}
 import io.hydrosphere.serving.gateway.persistence.servable.ServableInMemoryStorage
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredModelVersion, StoredServable, StoredStage}
 import io.hydrosphere.serving.gateway.util.ShowInstances._
-import io.hydrosphere.serving.gateway.util.{ReadWriteLock, UUIDGenerator}
+import io.hydrosphere.serving.gateway.util.{RandomNumberGenerator, ReadWriteLock, UUIDGenerator}
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -28,6 +28,7 @@ class ExecutionTests extends GenericTest {
     implicit val clock = Clock.create[IO]
     implicit val cs = IO.contextShift(ExecutionContext.global)
     implicit val uuid = UUIDGenerator[IO]
+    implicit val rng = RandomNumberGenerator.default[IO].unsafeRunSync()
 
     it("single servable without shadow") {
       val clientCtor = new PredictionClient.Factory[IO] {
@@ -50,7 +51,7 @@ class ExecutionTests extends GenericTest {
       }
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
-      servableStorage.add(Seq(StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
+      servableStorage.add(Seq(StoredServable("test", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
 
       val appStorage = new ApplicationStorage[IO] {
         override def getByName(name: String): IO[Option[StoredApplication]] = ???
@@ -64,9 +65,7 @@ class ExecutionTests extends GenericTest {
       val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
 
       val request = PredictRequest(
-        modelSpec = ModelSpec(
-          "test", 1L.some
-        ).some,
+        modelSpec = ModelSpec("test").some,
         inputs = Map(
           "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
         )
@@ -96,25 +95,20 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val servable = StoredServable("AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
+      val servable = StoredServable("shadow-me", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
 
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
       servableStorage.add(Seq(servable)).unsafeRunSync()
 
-      val appStorage = new ApplicationStorage[IO] {
-        override def getByName(name: String): IO[Option[StoredApplication]] = ???
-        override def getById(id: Long): IO[Option[StoredApplication]] = ???
-        override def getExecutor(name: String): IO[Option[Predictor[IO]]] = ???
-        override def listAll: IO[List[StoredApplication]] = ???
-        override def addApps(apps: List[StoredApplication]): IO[Unit] = ???
-        override def removeApps(ids: List[Long]): IO[List[StoredApplication]] = ???
-      }
+      val selector = ResponseSelector.randomSelector[IO]
+
+      val appStorage = new ApplicationInMemoryStorage[IO](lock, servableStorage.getExecutor, shadow, selector)
 
       val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
 
       val request = PredictRequest(
-        modelSpec = ModelSpec("shadowed", 2L.some).some,
+        modelSpec = ModelSpec("shadow-me").some,
         inputs = Map(
           "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
         ))
@@ -145,7 +139,7 @@ class ExecutionTests extends GenericTest {
         }
       }
       val mv = StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")
-      val servable = StoredServable("AYAYA", 420, 100, mv)
+      val servable = StoredServable("s1", "AYAYA", 420, 100, mv)
       val exec = Predictor.forServable(servable, clientCtor).unsafeRunSync()
       val shadowState = ListBuffer.empty[ExecutionMetadata]
       val shadow: MonitoringClient[IO] = (req, resp, appInfo) => {
@@ -168,9 +162,9 @@ class ExecutionTests extends GenericTest {
     }
 
     it("Stage execution") {
-      val servable1 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "test", ModelSignature.defaultInstance, "Ok"))
-      val servable2 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "test", ModelSignature.defaultInstance, "Ok"))
-      val servable3 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable1 = StoredServable("s1", "A", 420, 100, StoredModelVersion(1, 1, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable2 = StoredServable("s2", "AY", 420, 100, StoredModelVersion(2, 2, "test", ModelSignature.defaultInstance, "Ok"))
+      val servable3 = StoredServable("s3", "AYA", 420, 100, StoredModelVersion(3, 3, "test", ModelSignature.defaultInstance, "Ok"))
       val storedStage = StoredStage("test-stage", NonEmptyList.of(servable1, servable2, servable3), ModelSignature.defaultInstance)
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage))
 
@@ -267,14 +261,14 @@ class ExecutionTests extends GenericTest {
     }
 
     it("Application executor") {
-      val servable11 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "a", ModelSignature.defaultInstance, "Ok"))
-      val servable12 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "a", ModelSignature.defaultInstance, "Ok"))
-      val servable13 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable11 = StoredServable("s1", "A", 420, 100, StoredModelVersion(1, 1, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable12 = StoredServable("s2", "AY", 420, 100, StoredModelVersion(2, 2, "a", ModelSignature.defaultInstance, "Ok"))
+      val servable13 = StoredServable("s3", "AYA", 420, 100, StoredModelVersion(3, 3, "a", ModelSignature.defaultInstance, "Ok"))
       val storedStage1 = StoredStage("test-stage-1", NonEmptyList.of(servable11, servable12, servable13), ModelSignature.defaultInstance)
 
-      val servable21 = StoredServable("A", 420, 100, StoredModelVersion(1, 1, "b", ModelSignature.defaultInstance, "Ok"))
-      val servable22 = StoredServable("AY", 420, 100, StoredModelVersion(2, 2, "b", ModelSignature.defaultInstance, "Ok"))
-      val servable23 = StoredServable("AYA", 420, 100, StoredModelVersion(3, 3, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable21 = StoredServable("s4", "A", 420, 100, StoredModelVersion(1, 1, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable22 = StoredServable("s5", "AY", 420, 100, StoredModelVersion(2, 2, "b", ModelSignature.defaultInstance, "Ok"))
+      val servable23 = StoredServable("s6", "AYA", 420, 100, StoredModelVersion(3, 3, "b", ModelSignature.defaultInstance, "Ok"))
       val storedStage2 = StoredStage("test-stage-2", NonEmptyList.of(servable21, servable22, servable23), ModelSignature.defaultInstance)
 
       val storedApp = StoredApplication(1, "test-application", None, ModelSignature.defaultInstance, NonEmptyList.of(storedStage1, storedStage2))

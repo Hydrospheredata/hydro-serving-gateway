@@ -12,7 +12,7 @@ import scala.collection.mutable
 
 class ApplicationInMemoryStorage[F[_]](
   rwLock: ReadWriteLock[F],
-  channelFactory: PredictorCtor[F],
+  servableCtor: PredictorCtor[F],
   shadow: MonitoringClient[F],
   selector: ResponseSelector[F]
 )(implicit F: Concurrent[F]) extends ApplicationStorage[F] {
@@ -34,7 +34,7 @@ class ApplicationInMemoryStorage[F[_]](
       apps.traverse { app =>
         for {
           stages <- app.stages.traverse { x =>
-            StagePredictor.withShadow(app, x, channelFactory, shadow, selector)
+            StagePredictor.withShadow(app, x, servableCtor, shadow, selector)
           }
           pipelineExec = ApplicationExecutor.pipelineExecutor(stages)
         } yield {
@@ -42,7 +42,7 @@ class ApplicationInMemoryStorage[F[_]](
           applicationsByName += app.name -> app
           executors += app.name -> pipelineExec
         }
-      }.as(F.unit)
+      }.void
     }
   }
 
