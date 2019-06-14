@@ -5,12 +5,11 @@ import cats.effect.Sync
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
 import io.hydrosphere.serving.gateway.execution.Types.MessageData
-import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest}
+import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.util.UUIDGenerator
 import io.hydrosphere.serving.monitoring.metadata.TraceData
-import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 
 
@@ -51,7 +50,8 @@ object ExecutionService {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
-          executor <- OptionT(servableStorage.getExecutor(modelSpec.name))
+          executor <- OptionT(servableStorage.getShadowedExecutor(modelSpec.name))
+            .orElseF(appStorage.getExecutor(modelSpec.name))
             .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable ${modelSpec.name}")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
@@ -69,7 +69,8 @@ object ExecutionService {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
           validated <- F.fromEither(RequestValidator.verify(data.inputs)
             .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
-          servable <- shadowlessPredictor(modelSpec)
+          servable <- OptionT(servableStorage.getExecutor(modelSpec.name))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor ${modelSpec} is not found")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
             data = validated,
@@ -79,16 +80,6 @@ object ExecutionService {
           res <- servable.predict(request)
           responseData <- F.fromEither(res.data)
         } yield PredictResponse(responseData)
-      }
-
-      def shadowlessPredictor(spec: ModelSpec): F[Predictor[F]] = {
-        spec.version match {
-          case Some(version) =>
-            OptionT(servableStorage.getExecutor(spec.name, version))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable with name ${spec.name} and version $version")))
-          case None =>
-            F.raiseError(GatewayError.NotSupported("Replay for applications is not supported"))
-        }
       }
 
       override def predictServable(data: MessageData, name: String): F[PredictResponse] = {

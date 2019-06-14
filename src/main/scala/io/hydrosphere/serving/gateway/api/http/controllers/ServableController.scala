@@ -20,16 +20,16 @@ class ServableController[F[_]](
   }
 
 
-  def serveServable = pathPrefix(Segment / LongNumber) { (modelName, modelVersion) =>
+  def serveServable = pathPrefix(Segment) { servableName =>
     post {
       entity(as[JsObject]) { jsObject =>
         completeF {
-          logger.info(s"Servable serve request: name=$modelName version=$modelVersion")
+          logger.info(s"Servable serve request: name=$servableName")
           for {
-            servable <- OptionT(servableStorage.getByModelVersion(modelName, modelVersion))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable for a model ${modelName}:${modelVersion}")))
-            req <- jsonToRequest(modelName, Some(modelVersion), jsObject, servable.modelVersion.predict)
-            res <- executor.predict(req)
+            servable <- OptionT(servableStorage.get(servableName))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable for a servable ${servableName}")))
+            req <- jsonToRequest(servableName, jsObject, servable.modelVersion.predict)
+            res <- executor.predictServable(req.inputs, servableName)
           } yield responseToJsObject(res)
         }
       }

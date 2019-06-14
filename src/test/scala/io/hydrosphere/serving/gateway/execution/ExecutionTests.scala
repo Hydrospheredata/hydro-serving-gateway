@@ -8,11 +8,11 @@ import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
-import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
+import io.hydrosphere.serving.gateway.persistence.application.{ApplicationInMemoryStorage, ApplicationStorage}
 import io.hydrosphere.serving.gateway.persistence.servable.ServableInMemoryStorage
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredModelVersion, StoredServable, StoredStage}
 import io.hydrosphere.serving.gateway.util.ShowInstances._
-import io.hydrosphere.serving.gateway.util.{ReadWriteLock, UUIDGenerator}
+import io.hydrosphere.serving.gateway.util.{RandomNumberGenerator, ReadWriteLock, UUIDGenerator}
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -28,6 +28,7 @@ class ExecutionTests extends GenericTest {
     implicit val clock = Clock.create[IO]
     implicit val cs = IO.contextShift(ExecutionContext.global)
     implicit val uuid = UUIDGenerator[IO]
+    implicit val rng = RandomNumberGenerator.default[IO].unsafeRunSync()
 
     it("single servable without shadow") {
       val clientCtor = new PredictionClient.Factory[IO] {
@@ -50,7 +51,7 @@ class ExecutionTests extends GenericTest {
       }
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
-      servableStorage.add(Seq(StoredServable("s1", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
+      servableStorage.add(Seq(StoredServable("test", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
 
       val appStorage = new ApplicationStorage[IO] {
         override def getByName(name: String): IO[Option[StoredApplication]] = ???
@@ -64,9 +65,7 @@ class ExecutionTests extends GenericTest {
       val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
 
       val request = PredictRequest(
-        modelSpec = ModelSpec(
-          "test", 1L.some
-        ).some,
+        modelSpec = ModelSpec("test").some,
         inputs = Map(
           "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
         )
@@ -96,25 +95,20 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val servable = StoredServable("s1", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
+      val servable = StoredServable("shadow-me", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
 
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
       servableStorage.add(Seq(servable)).unsafeRunSync()
 
-      val appStorage = new ApplicationStorage[IO] {
-        override def getByName(name: String): IO[Option[StoredApplication]] = ???
-        override def getById(id: Long): IO[Option[StoredApplication]] = ???
-        override def getExecutor(name: String): IO[Option[Predictor[IO]]] = ???
-        override def listAll: IO[List[StoredApplication]] = ???
-        override def addApps(apps: List[StoredApplication]): IO[Unit] = ???
-        override def removeApps(ids: List[Long]): IO[List[StoredApplication]] = ???
-      }
+      val selector = ResponseSelector.randomSelector[IO]
+
+      val appStorage = new ApplicationInMemoryStorage[IO](lock, servableStorage.getExecutor, shadow, selector)
 
       val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()
 
       val request = PredictRequest(
-        modelSpec = ModelSpec("shadowed", 2L.some).some,
+        modelSpec = ModelSpec("shadow-me").some,
         inputs = Map(
           "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
         ))
