@@ -15,7 +15,7 @@ object StoredServable {
   def parse(servable: Servable): Either[String, StoredServable] = {
     for {
       mv <- servable.modelVersion.toRight("Servable doesn't contain model version info")
-      _ <- Either.cond(servable.port == 0, "ok", "Servable is not ready") // goddamit protobuf why don't you have optional types
+      _ <- Either.cond(servable.port != 0, "ok", "Servable is not ready") // goddamit protobuf why don't you have optional types
       parsedMv <- StoredModelVersion.parse(mv)
     } yield
       StoredServable(
