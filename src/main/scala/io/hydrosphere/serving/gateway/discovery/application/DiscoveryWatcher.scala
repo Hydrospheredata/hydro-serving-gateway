@@ -117,19 +117,6 @@ class DiscoveryWatcher[F[_]](
   }
 
   private def connect() = {
-    val appObserver = new StreamObserver[ApplicationDiscoveryEvent] {
-      override def onError(e: Throwable): Unit = {
-        self ! ConnectionFailed(Option(e))
-      }
-
-      override def onCompleted(): Unit = {
-        self ! ConnectionFailed(None)
-      }
-
-      override def onNext(value: ApplicationDiscoveryEvent): Unit = {
-        self ! value
-      }
-    }
     val sObserver = new StreamObserver[ServableDiscoveryEvent] {
       override def onNext(value: ServableDiscoveryEvent): Unit = {
         self ! value
@@ -143,8 +130,22 @@ class DiscoveryWatcher[F[_]](
         self ! ConnectionFailed(None)
       }
     }
-    val apps = stub.watchApplications(appObserver)
     val serv = stub.watchServables(sObserver)
+    val appObserver = new StreamObserver[ApplicationDiscoveryEvent] {
+      override def onError(e: Throwable): Unit = {
+        self ! ConnectionFailed(Option(e))
+      }
+
+      override def onCompleted(): Unit = {
+        self ! ConnectionFailed(None)
+      }
+
+      override def onNext(value: ApplicationDiscoveryEvent): Unit = {
+        self ! value
+      }
+    }
+
+    val apps = stub.watchApplications(appObserver)
     (apps, serv)
   }
 
