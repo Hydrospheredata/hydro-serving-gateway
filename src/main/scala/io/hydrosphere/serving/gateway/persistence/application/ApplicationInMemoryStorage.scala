@@ -7,6 +7,7 @@ import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.servable.Predictor
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.mutable
 
@@ -15,7 +16,7 @@ class ApplicationInMemoryStorage[F[_]](
   servableCtor: PredictorCtor[F],
   shadow: MonitoringClient[F],
   selector: ResponseSelector[F]
-)(implicit F: Concurrent[F]) extends ApplicationStorage[F] {
+)(implicit F: Concurrent[F]) extends ApplicationStorage[F] with Logging {
   private[this] val applicationsById = mutable.Map.empty[Long, StoredApplication]
   private[this] val applicationsByName = mutable.Map.empty[String, StoredApplication]
   private[this] val executors = mutable.Map.empty[String, Predictor[F]]
@@ -32,7 +33,7 @@ class ApplicationInMemoryStorage[F[_]](
   override def addApps(apps: List[StoredApplication]): F[Unit] = {
     rwLock.write.use { _ =>
       apps.traverse { app =>
-        for {
+        val flow = for {
           stages <- app.stages.traverse { x =>
             StagePredictor.withShadow(app, x, servableCtor, shadow, selector)
           }
@@ -41,6 +42,9 @@ class ApplicationInMemoryStorage[F[_]](
           applicationsById += app.id -> app
           applicationsByName += app.name -> app
           executors += app.name -> pipelineExec
+        }
+        flow.void.handleErrorWith { err =>
+          F.delay(logger.error(s"Error while loading application ${app.name}", err))
         }
       }.void
     }

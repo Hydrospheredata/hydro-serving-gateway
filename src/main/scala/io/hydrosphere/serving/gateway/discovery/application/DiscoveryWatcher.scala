@@ -108,7 +108,10 @@ class DiscoveryWatcher[F[_]](
       log.info(s"Received application: $app".slice(0, 512))
     }
 
+    val servables = addedApplications.toList.flatMap(_.stages.toList.flatMap(_.servables.toList))
+
     val upd = for {
+      _ <- servableStorage.add(servables)
       parsedRemovedIds <- resp.removedIds.toList.traverse(x => F.fromTry(Try(x.toLong)))
       _ <- applicationStorage.addApps(addedApplications.toList)
       _ <- applicationStorage.removeApps(parsedRemovedIds)
