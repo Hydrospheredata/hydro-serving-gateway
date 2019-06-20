@@ -6,6 +6,7 @@ import cats.Monad
 import cats.effect.{Clock, Sync}
 import cats.implicits._
 import io.hydrosphere.serving.gateway.Logging
+import io.hydrosphere.serving.gateway.execution.RequestValidator
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
@@ -43,8 +44,9 @@ object Predictor extends Logging {
           inputs = request.data
         )
         for {
+          verifiedInput <- F.fromEither(RequestValidator.verify(req.inputs))
           start <- clock.monotonic(TimeUnit.MILLISECONDS)
-          res <- stub.predict(req).attempt
+          res <- stub.predict(req.copy(inputs = verifiedInput)).attempt
           end <- clock.monotonic(TimeUnit.MILLISECONDS)
         } yield ServableResponse(
           data = res.map(_.outputs),

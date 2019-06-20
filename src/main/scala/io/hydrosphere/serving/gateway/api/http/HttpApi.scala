@@ -12,7 +12,7 @@ import cats.implicits._
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
 import io.hydrosphere.serving.gateway.{BuildInfo, Logging}
-import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, NotFound}
+import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, InvalidPredictMessage, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, LegacyController, ServableController}
 import io.hydrosphere.serving.gateway.execution.ExecutionService
@@ -56,6 +56,13 @@ class HttpApi[F[_]: Effect](
         StatusCodes.BadRequest -> Map(
           "error" -> "BadRequest",
           "information" -> msg
+        )
+      )
+    case InvalidPredictMessage(fields, msg) =>
+      complete(
+        StatusCodes.BadRequest -> Map(
+          "error" -> msg,
+          "information" -> fields.toString
         )
       )
     case p: Throwable =>

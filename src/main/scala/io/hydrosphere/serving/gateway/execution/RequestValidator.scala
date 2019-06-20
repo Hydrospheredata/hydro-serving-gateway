@@ -2,11 +2,12 @@ package io.hydrosphere.serving.gateway.execution
 
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
+import io.hydrosphere.serving.gateway.GatewayError.InvalidPredictMessage
 import io.hydrosphere.serving.gateway.execution.Types.MessageData
 import io.hydrosphere.serving.model.api.TensorUtil
 
 object RequestValidator {
- def verify(request: MessageData): Either[Map[String, GatewayError], MessageData] = {
+ def verify(request: MessageData): Either[GatewayError, MessageData] = {
   val verificationResults = request.map {
    case (name, tensor) =>
     val verifiedTensor = if (!tensor.tensorContent.isEmpty) { // tensorContent - byte field, thus skip verifications
@@ -28,7 +29,7 @@ object RequestValidator {
    val verifiedInputs = verificationResults.mapValues(_.right.get)
    Right(verifiedInputs)
   } else {
-   Left(errors)
+   Left(InvalidPredictMessage(errors, "Invalid predict message"))
   }
  }
 }

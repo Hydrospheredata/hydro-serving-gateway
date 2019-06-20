@@ -48,8 +48,7 @@ object ExecutionService {
       override def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          validated <- F.fromEither(RequestValidator.verify(data.inputs)
-            .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
+          validated <- F.fromEither(RequestValidator.verify(data.inputs))
           executor <- OptionT(servableStorage.getShadowedExecutor(modelSpec.name))
             .orElseF(appStorage.getExecutor(modelSpec.name))
             .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable ${modelSpec.name}")))
@@ -67,10 +66,9 @@ object ExecutionService {
       override def predictWithoutShadow(data: PredictRequest): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          validated <- F.fromEither(RequestValidator.verify(data.inputs)
-            .left.map(errs => GatewayError.InvalidArgument(s"Invalid request: ${errs.mkString}")))
+          validated <- F.fromEither(RequestValidator.verify(data.inputs))
           servable <- OptionT(servableStorage.getExecutor(modelSpec.name))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor ${modelSpec} is not found")))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor $modelSpec is not found")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
             data = validated,

@@ -17,4 +17,6 @@ object GatewayError {
 
   case class InvalidTensorShape(msg: String) extends GatewayError
 
+  case class InvalidPredictMessage(info: Map[String, GatewayError], msg: String) extends GatewayError
+
 }

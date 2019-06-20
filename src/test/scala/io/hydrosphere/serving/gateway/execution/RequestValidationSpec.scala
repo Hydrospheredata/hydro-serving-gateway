@@ -4,7 +4,8 @@ import com.google.protobuf.ByteString
 import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.tensor.{TensorProto, Uint8Tensor}
-import io.hydrosphere.serving.tensorflow.types.DataType.DT_INT16
+import io.hydrosphere.serving.tensorflow.tensor_shape.TensorShapeProto
+import io.hydrosphere.serving.tensorflow.types.DataType.{DT_INT16, DT_STRING}
 
 class RequestValidationSpec extends GenericTest {
 
@@ -25,6 +26,21 @@ class RequestValidationSpec extends GenericTest {
       val r = result.right.get
       assert(r("ignoreMe") === ignoreMe)
       assert(r("noticeMe") === noticeMe)
+    }
+
+    it("should put actual dims") {
+      val data = TensorProto(
+        dtype = DT_STRING,
+        stringVal = Seq(ByteString.copyFromUtf8("foo")),
+        tensorShape = Some(TensorShapeProto(dim= Seq(TensorShapeProto.Dim(size = -1))))
+      )
+      val request = Map(
+        "input" -> data
+      )
+      val result = RequestValidator.verify(request)
+      assert(result.isRight, result)
+      val res = result.right.get
+      assert(res("input").tensorShape.contains(TensorShapeProto(dim = Seq(TensorShapeProto.Dim(size = 1)))))
     }
   }
 }
