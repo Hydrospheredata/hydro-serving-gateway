@@ -112,9 +112,8 @@ class DiscoveryWatcher[F[_]](
 
     val upd = for {
       _ <- servableStorage.add(servables)
-      parsedRemovedIds <- resp.removedIds.toList.traverse(x => F.fromTry(Try(x.toLong)))
       _ <- applicationStorage.addApps(addedApplications.toList)
-      _ <- applicationStorage.removeApps(parsedRemovedIds)
+      _ <- applicationStorage.removeApps(resp.removedIds)
     } yield ()
     upd.toIO.unsafeRunSync()
   }

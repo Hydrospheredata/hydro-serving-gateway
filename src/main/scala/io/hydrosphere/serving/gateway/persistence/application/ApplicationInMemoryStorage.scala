@@ -50,13 +50,13 @@ class ApplicationInMemoryStorage[F[_]](
     }
   }
 
-  override def removeApps(ids: List[Long]): F[List[StoredApplication]] = {
+  override def removeApps(ids: Seq[String]): F[List[StoredApplication]] = {
     rwLock.write.use { _ =>
       F.delay {
         ids.flatMap { id =>
-          applicationsById.get(id) match {
+          applicationsByName.get(id) match {
             case Some(app) =>
-              applicationsById.remove(id)
+              applicationsById.remove(app.id)
               applicationsByName.remove(app.name)
               List(app)
             case None => Nil

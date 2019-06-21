@@ -66,12 +66,17 @@ class ServableInMemoryStorage[F[_]](
   override def remove(ids: Seq[String]): F[Unit] = {
     lock.write.use { _ =>
       ids.toList.traverse { name =>
-        for {
-          _ <- F.delay(servableState -= name)
-          _ <- servableExecutors(name).close
-          _ <- F.delay(servableExecutors -= name)
-          _ <- F.delay(monitorableExecutors -= name)
-        } yield ()
+        servableState.get(name) match {
+          case Some(_) =>
+            val flow = for {
+              _ <- F.delay(servableState -= name)
+              _ <- servableExecutors(name).close
+              _ <- F.delay(servableExecutors -= name)
+              _ <- F.delay(monitorableExecutors -= name)
+            } yield ()
+            flow.attempt.void
+          case None => F.unit
+        }
       }.void
     }
   }

@@ -16,7 +16,7 @@ trait ApplicationStorage[F[_]] {
   def listAll: F[List[StoredApplication]]
 
   def addApps(apps: List[StoredApplication]): F[Unit]
-  def removeApps(ids: List[Long]): F[List[StoredApplication]]
+  def removeApps(ids: Seq[String]): F[List[StoredApplication]]
 }
 
 object ApplicationStorage {
