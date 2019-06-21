@@ -59,7 +59,7 @@ class ExecutionTests extends GenericTest {
         override def getExecutor(name: String): IO[Option[Predictor[IO]]] = ???
         override def listAll: IO[List[StoredApplication]] = ???
         override def addApps(apps: List[StoredApplication]): IO[Unit] = ???
-        override def removeApps(ids: List[Long]): IO[List[StoredApplication]] = ???
+        override def removeApps(ids: Seq[String]): IO[List[StoredApplication]] = ???
       }
 
       val executionService = ExecutionService.makeDefault[IO](appStorage, servableStorage).unsafeRunSync()

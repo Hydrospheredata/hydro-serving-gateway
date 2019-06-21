@@ -55,5 +55,30 @@ class ServableStorageSpec extends GenericTest {
       assert(clients.size == 2)
       assert(closedClients.size == 1)
     }
+
+    it("should handle deletion of non-existent servables") {
+      val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
+      val clients = mutable.HashSet.empty[(String, Int)]
+      val closedClients = mutable.HashSet.empty[(String, Int)]
+      val clientCtor = new PredictionClient.Factory[IO] {
+        override def make(host: String, port: Int): IO[PredictionClient[IO]] = IO {
+          clients += host -> port
+          new PredictionClient[IO] {
+            override def predict(request: PredictRequest): IO[PredictResponse] = IO.raiseError(???)
+
+            override def close(): IO[Unit] = IO{
+              clients -= host -> port
+              closedClients += host -> port
+            }
+          }
+        }
+      }
+      val shadow = new MonitoringClient[IO] {
+        override def monitor(request: ServableRequest, response: AssociatedResponse, appInfo: Option[ApplicationInfo]): IO[ExecutionMetadata] = ???
+      }
+      val storage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
+      storage.remove(Seq("kek")).unsafeRunSync()
+      assert(true) // shouldn't crash
+    }
   }
 }
