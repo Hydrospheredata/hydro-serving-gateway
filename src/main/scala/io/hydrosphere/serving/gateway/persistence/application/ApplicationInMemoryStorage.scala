@@ -8,7 +8,7 @@ import io.hydrosphere.serving.gateway.execution.servable.Predictor
 import io.hydrosphere.serving.gateway.persistence.StoredApplication
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
 import org.apache.logging.log4j.scala.Logging
-
+import org.apache.kafka.streams.scala._
 import scala.collection.mutable
 
 class ApplicationInMemoryStorage[F[_]](
@@ -38,6 +38,10 @@ class ApplicationInMemoryStorage[F[_]](
             StagePredictor.withShadow(app, x, servableCtor, shadow, selector)
           }
           pipelineExec = ApplicationExecutor.pipelineExecutor(stages)
+          _ <-F.delay{
+            val b = new StreamsBuilder()
+            b.stream(app)
+          }
         } yield {
           applicationsById += app.id -> app
           applicationsByName += app.name -> app

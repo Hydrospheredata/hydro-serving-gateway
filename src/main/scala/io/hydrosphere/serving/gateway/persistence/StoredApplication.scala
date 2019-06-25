@@ -16,22 +16,37 @@ object StoredApplication {
       parsedStages <- Traverse[NonEmptyList].traverse(stages)(StoredStage.parse)
       contract <- app.contract.flatMap(_.predict).toRight("Application doesn't have a predict signature")
       id <- Try(app.id.toLong).toEither.left.map(_.getMessage)
+      streamParams = app.streamingParams.toList.map { p =>
+        AppStreamingParams(
+          sourceTopic = p.sourceTopic,
+          destTopic = p.destinationTopic,
+          errorTopic = if (p.errorTopic.nonEmpty) Some(p.errorTopic) else None
+        )
+      }
     } yield StoredApplication(
       id = id,
       name = app.name,
       namespace = None,
       signature = contract,
-      stages = parsedStages
+      stages = parsedStages,
+      streamingParams = streamParams
     )
 
     out.leftMap(s => s"Invalid app: ${app.id}, ${app.name}. $s")
   }
 }
 
+case class AppStreamingParams(
+  sourceTopic: String,
+  destTopic: String,
+  errorTopic: Option[String]
+)
+
 case class StoredApplication(
   id: Long,
   name: String,
   namespace: Option[String],
   signature: ModelSignature,
-  stages: NonEmptyList[StoredStage]
+  stages: NonEmptyList[StoredStage],
+  streamingParams: List[AppStreamingParams]
 )
