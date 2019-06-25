@@ -5,9 +5,9 @@ import akka.stream.ActorMaterializer
 import cats.effect._
 import cats.syntax.functor._
 import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
-import io.hydrosphere.serving.gateway.discovery.application.DiscoveryService
 import io.hydrosphere.serving.gateway.api.grpc.GrpcApi
 import io.hydrosphere.serving.gateway.api.http.HttpApi
+import io.hydrosphere.serving.gateway.discovery.{DiscoveryWatcher, EventHandler}
 import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.integrations.Monitoring
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
@@ -51,11 +51,14 @@ object Main extends IOApp with Logging {
 
       servableStorage <- Resource.liftF(ServableStorage.makeInMemory[F](clientCtor, shadow))
       appStorage <- Resource.liftF(ApplicationStorage.makeInMemory[F](servableStorage.getExecutor, shadow, responseSelector))
-      appUpdater <- Resource.liftF(DiscoveryService.makeDefault[F](
+
+      appEventHandler = EventHandler.ApplicationEventHandler.default[F](appStorage, servableStorage)
+      servableEventHandler = EventHandler.ServableEventHandler.default[F](servableStorage)
+      _ <- Resource.liftF(DiscoveryWatcher.make[F](
         config.apiGateway,
         config.grpc.deadline,
-        appStorage,
-        servableStorage
+        appEventHandler,
+        servableEventHandler
       ))
 
       _ <- Resource.liftF(Logging.debug[F]("Initializing app execution service"))

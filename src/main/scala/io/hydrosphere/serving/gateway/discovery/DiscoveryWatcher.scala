@@ -1,28 +1,26 @@
-package io.hydrosphere.serving.gateway.discovery.application
+package io.hydrosphere.serving.gateway.discovery
 
-import akka.actor.{Actor, ActorLogging, Props, Timers}
-import cats.data.Chain
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props, Timers}
 import cats.effect.Effect
-import cats.effect.implicits._
 import cats.implicits._
+import cats.effect.implicits._
 import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
 import io.hydrosphere.serving.discovery.serving.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
-import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
-import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
-import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
-import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredServable}
+import io.hydrosphere.serving.gateway.discovery.DiscoveryWatcher._
+import io.hydrosphere.serving.gateway.discovery.EventHandler.{ApplicationEventHandler, ServableEventHandler}
 
 import scala.concurrent.duration.Duration
 import scala.util.Try
 
+
 class DiscoveryWatcher[F[_]](
   apiGatewayConf: ApiGatewayConfig,
   clientDeadline: Duration,
-  applicationStorage: ApplicationStorage[F],
-  servableStorage: ServableStorage[F]
+  appHandler: ApplicationEventHandler[F],
+  servableHandler: ServableEventHandler[F]
 )(implicit F: Effect[F]) extends Actor with Timers with ActorLogging {
   val stub: ServingDiscoveryGrpc.ServingDiscoveryStub = {
     val builder = ManagedChannelBuilder
@@ -53,9 +51,11 @@ class DiscoveryWatcher[F[_]](
 
 
   def listening(appResponse: StreamObserver[Empty], servableResponse: StreamObserver[Empty]): Receive = {
-    case resp: ApplicationDiscoveryEvent => handleAppEvent(resp)
+    case ev: ApplicationDiscoveryEvent =>
+      appHandler.handle(ev).toIO.unsafeRunSync()
 
-    case ev: ServableDiscoveryEvent => handleServableEvent(ev)
+    case ev: ServableDiscoveryEvent =>
+      servableHandler.handle(ev).toIO.unsafeRunSync()
 
     case ConnectionFailed(maybeE) =>
       maybeE match {
@@ -66,56 +66,6 @@ class DiscoveryWatcher[F[_]](
       context become disconnected
     case x =>
       log.debug(s"Unknown message: $x")
-  }
-
-  def handleServableEvent(ev: ServableDiscoveryEvent): Unit = {
-    log.debug(s"Servable stream update: $ev")
-    val converted = ev.added.map(s => StoredServable.parse(s))
-    val (addedServables, parsingErrors) =
-      converted.foldLeft((Chain.empty[StoredServable], Chain.empty[String])) {
-        case ((_valid, _invalid), Left(e)) => (_valid, _invalid.prepend(e))
-        case ((_valid, _invalid), Right(v)) => (_valid.prepend(v), _invalid)
-      }
-    parsingErrors.map { msg =>
-      log.error(s"Received invalid servable. $msg".slice(0, 512))
-    }
-    addedServables.map { servable =>
-      log.info(s"Received servable: $servable".slice(0, 512))
-    }
-    val removed = ev.removedIdx.toList
-      log.info(s"Removed servables: $removed")
-    val upd = for {
-      _ <- servableStorage.add(addedServables.toList)
-      _ <- servableStorage.remove(removed)
-    } yield ()
-    upd.toIO.unsafeRunSync()
-  }
-
-  private def handleAppEvent(resp: ApplicationDiscoveryEvent): Unit = {
-    log.debug(s"Application stream update: $resp")
-    val converted = resp.added.map(app => StoredApplication.parse(app))
-    val (addedApplications, parsingErrors) =
-      converted.foldLeft((Chain.empty[StoredApplication], Chain.empty[String]))({
-        case ((_valid, _invalid), Left(e)) => (_valid, _invalid.prepend(e))
-        case ((_valid, _invalid), Right(v)) => (_valid.prepend(v), _invalid)
-      })
-
-    parsingErrors.map { msg =>
-      log.error(s"Received invalid application. $msg".slice(0, 512))
-    }
-
-    addedApplications.map { app =>
-      log.info(s"Received application: $app".slice(0, 512))
-    }
-
-    val servables = addedApplications.toList.flatMap(_.stages.toList.flatMap(_.servables.toList))
-
-    val upd = for {
-      _ <- servableStorage.add(servables)
-      _ <- applicationStorage.addApps(addedApplications.toList)
-      _ <- applicationStorage.removeApps(resp.removedIds)
-    } yield ()
-    upd.toIO.unsafeRunSync()
   }
 
   private def connect() = {
@@ -166,7 +116,19 @@ object DiscoveryWatcher {
   def props[F[_] : Effect](
     apiGatewayConf: ApiGatewayConfig,
     clientDeadline: Duration,
-    applicationStorage: ApplicationStorage[F],
-    servableStorage: ServableStorage[F]
-  ): Props = Props(new DiscoveryWatcher(apiGatewayConf, clientDeadline, applicationStorage, servableStorage))
+    applicationEventHandler: ApplicationEventHandler[F],
+    servableEventHandler: ServableEventHandler[F]
+  ): Props = Props(new DiscoveryWatcher(apiGatewayConf, clientDeadline, applicationEventHandler, servableEventHandler))
+
+  def make[F[_]](
+    apiGatewayConfig: ApiGatewayConfig,
+    clientDeadline: Duration,
+    applicationEventHandler: ApplicationEventHandler[F],
+    servableEventHandler: ServableEventHandler[F]
+  )(
+    implicit F: Effect[F],
+    actorSystem: ActorSystem
+  ) = {
+    F.delay(actorSystem.actorOf(props(apiGatewayConfig, clientDeadline, applicationEventHandler, servableEventHandler)))
+  }
 }
