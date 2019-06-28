@@ -70,3 +70,7 @@ project/plugins/project/
 *.log
 
 .idea
+.bloop
+.metals
+.vscode
+
