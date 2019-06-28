@@ -6,6 +6,7 @@ import cats.effect.{Concurrent, Sync, Timer}
 import cats.implicits._
 
 import scala.concurrent.duration.FiniteDuration
+import akka.io.IO
 
 trait CircuitBreaker[F[_]] {
   def use[A](f: => F[A]): F[A]
