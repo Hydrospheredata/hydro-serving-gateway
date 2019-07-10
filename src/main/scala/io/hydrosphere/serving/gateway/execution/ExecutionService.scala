@@ -82,7 +82,7 @@ object ExecutionService {
 
       override def predictServable(data: MessageData, name: String): F[PredictResponse] = {
         for {
-          servable <- OptionT(servableStorage.getExecutor(name))
+          servable <- OptionT(servableStorage.getShadowedExecutor(name))
             .getOrElseF(F.raiseError(GatewayError.NotFound(s"Servable $name not found")))
           id <- uuid.random.map(_.toString)
           res <- servable.predict(ServableRequest(data, id))
