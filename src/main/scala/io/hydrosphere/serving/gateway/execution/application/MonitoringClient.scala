@@ -100,7 +100,7 @@ object MonitoringClient extends Logging {
 
   def mkReqStore[F[_]](conf: ReqStoreConfig)(implicit F: Async[F]): F[Option[ServingReqStore[F]]] = {
     if (conf.enabled) {
-      ReqStore.create[F, (PredictRequest, ResponseOrError)](conf).map(_.some)
+      ReqStore.grpc[F, (PredictRequest, ResponseOrError)](conf).map(_.some)
     } else {
       F.pure(None)
     }
