@@ -37,7 +37,8 @@ class ServableInMemoryStorage[F[_]](
     lock.write.use { _ =>
       servables.toList.traverse[F, Unit] { s =>
         servableState.get(s.name) match {
-          case Some(_) =>
+          case Some(stored) if stored == s => F.unit
+          case Some(stored) if stored != s =>
             for {
               _ <- F.delay(servableState.update(s.name, s))
 
