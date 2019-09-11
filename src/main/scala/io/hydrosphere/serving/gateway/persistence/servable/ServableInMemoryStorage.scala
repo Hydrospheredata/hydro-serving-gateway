@@ -37,19 +37,24 @@ class ServableInMemoryStorage[F[_]](
     lock.write.use { _ =>
       servables.toList.traverse[F, Unit] { s =>
         servableState.get(s.name) match {
-          case Some(stored) if stored == s => F.unit
-          case Some(stored) if stored != s =>
+          case Some(stored) =>
             for {
               _ <- F.delay(servableState.update(s.name, s))
+              
+              _ <- F.defer {
+                if (stored.isReconnectNeeded(s)) {
+                  for {
+                    _ <- OptionT(F.delay(servableExecutors.get(s.name)))
+                      .flatMap(x => OptionT.liftF(x.close)).value
 
-              _ <- OptionT(F.delay(servableExecutors.get(s.name)))
-                .flatMap(x => OptionT.liftF(x.close)).value
+                    exec <- Predictor.forServable(s, clientCtor)
+                    shadowed = Predictor.withShadow(s, exec, shadow, None)
 
-              exec <- Predictor.forServable(s, clientCtor)
-              shadowed = Predictor.withShadow(s, exec, shadow, None)
-
-              _ <- F.delay(servableExecutors.update(s.name, exec))
-              _ <- F.delay(monitorableExecutors.update(s.name,shadowed))
+                    _ <- F.delay(servableExecutors.update(s.name, exec))
+                    _ <- F.delay(monitorableExecutors.update(s.name, shadowed))
+                  } yield ()
+                } else F.unit
+              }
             } yield ()
           case None =>
             for {

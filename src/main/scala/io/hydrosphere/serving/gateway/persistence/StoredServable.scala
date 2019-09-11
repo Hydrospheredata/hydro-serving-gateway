@@ -8,7 +8,12 @@ case class StoredServable(
   port: Int,
   weight: Int,
   modelVersion: StoredModelVersion,
-)
+) {
+  def isReconnectNeeded(that: StoredServable): Boolean = {
+    name == that.name &&
+      (host != that.host || port != that.port)
+  }
+}
 
 
 object StoredServable {
