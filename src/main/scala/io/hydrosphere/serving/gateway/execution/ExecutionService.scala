@@ -17,7 +17,6 @@ import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictRes
   * Facade for any kind of execution.
   *
   * Handles both Servables and Applications.
-  * @tparam F effectful type
   */
 trait ExecutionService[F[_]] {
   def predict(data: PredictRequest): F[PredictResponse]
@@ -48,13 +47,12 @@ object ExecutionService {
       override def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          validated <- F.fromEither(RequestValidator.verify(data.inputs))
           executor <- OptionT(servableStorage.getShadowedExecutor(modelSpec.name))
             .orElseF(appStorage.getExecutor(modelSpec.name))
             .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable ${modelSpec.name}")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
-            data = validated,
+            data = data.inputs,
             replayTrace = time,
             requestId = id
           )
@@ -66,12 +64,11 @@ object ExecutionService {
       override def predictWithoutShadow(data: PredictRequest): F[PredictResponse] = {
         for {
           modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          validated <- F.fromEither(RequestValidator.verify(data.inputs))
           servable <- OptionT(servableStorage.getExecutor(modelSpec.name))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor $modelSpec is not found")))
           id <- uuid.random.map(_.toString)
           request = ServableRequest(
-            data = validated,
+            data = data.inputs,
             replayTrace = None,
             requestId = id
           )

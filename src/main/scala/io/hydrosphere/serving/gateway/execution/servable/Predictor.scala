@@ -2,11 +2,9 @@ package io.hydrosphere.serving.gateway.execution.servable
 
 import java.util.concurrent.TimeUnit
 
-import cats.Monad
 import cats.effect.{Clock, Sync}
 import cats.implicits._
-import io.hydrosphere.serving.gateway.Logging
-import io.hydrosphere.serving.gateway.execution.RequestValidator
+import io.hydrosphere.serving.gateway.{Contract, Logging}
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
@@ -44,12 +42,13 @@ object Predictor extends Logging {
           inputs = request.data
         )
         for {
-          verifiedInput <- F.fromEither(RequestValidator.verify(req.inputs))
+          validatedInput <- F.fromEither(Contract.validate(req.inputs, servable.modelVersion.predict.inputs.toList))
           start <- clock.monotonic(TimeUnit.MILLISECONDS)
-          res <- stub.predict(req.copy(inputs = verifiedInput)).attempt
+          res <- stub.predict(req.copy(inputs = validatedInput)).attempt
           end <- clock.monotonic(TimeUnit.MILLISECONDS)
+          maybeValidatedOutput = res.flatMap(d => Contract.validate(d.outputs, servable.modelVersion.predict.outputs.toList))
         } yield ServableResponse(
-          data = res.map(_.outputs),
+          data = maybeValidatedOutput,
           latency = end - start
         )
       }
