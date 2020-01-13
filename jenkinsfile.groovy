@@ -3,26 +3,31 @@ node {
     git 'https://github.com/Hydrospheredata/hydro-serving-gateway.git'
   }
   stage('SonarQube analysis') {
-    def scannerHome = tool 'Sonarcloud';
-    withSonarQubeEnv('Sonarcloud') { // If you have configured more than one global server connection, you can specify its name
-      if (env.CHANGE_ID != 'null') {
-        sh "${scannerHome}/bin/sonar-scanner \
-          -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
-          -Dsonar.organization=hydrosphere \
-          -Dsonar.sources=. \
-          -Dsonar.pullrequest.key=${env.CHANGE_ID} \
-          -Dsonar.pullrequest.branch=${env.CHANGE_BRANCH} \
-          -Dsonar.pullrequest.base=${env.CHANGE_TARGET} \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=f4edb54bde6f29b48660b944fda885099b9a2a48"
-      } else {
-        sh "${scannerHome}/bin/sonar-scanner \
-          -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
-          -Dsonar.organization=hydrosphere \
-          -Dsonar.sources=. \
-          -Dsonar.branch.name=${env.BRANCH_NAME} \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=f4edb54bde6f29b48660b944fda885099b9a2a48"        
+    steps{
+      script {
+        def scannerHome = tool 'Sonarcloud';
+        sh "echo ${env.CHANGE_ID}"
+        withSonarQubeEnv('Sonarcloud') { // If you have configured more than one global server connection, you can specify its name
+          if (env.CHANGE_ID != 'null') {
+            sh "${scannerHome}/bin/sonar-scanner \
+              -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
+              -Dsonar.organization=hydrosphere \
+              -Dsonar.sources=. \
+              -Dsonar.pullrequest.key=${env.CHANGE_ID} \
+              -Dsonar.pullrequest.branch=${env.CHANGE_BRANCH} \
+              -Dsonar.pullrequest.base=${env.CHANGE_TARGET} \
+              -Dsonar.host.url=https://sonarcloud.io \
+              -Dsonar.login=f4edb54bde6f29b48660b944fda885099b9a2a48"
+          } else {
+            sh "${scannerHome}/bin/sonar-scanner \
+              -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
+              -Dsonar.organization=hydrosphere \
+              -Dsonar.sources=. \
+              -Dsonar.branch.name=${env.BRANCH_NAME} \
+              -Dsonar.host.url=https://sonarcloud.io \
+              -Dsonar.login=f4edb54bde6f29b48660b944fda885099b9a2a48"        
+          }
+        }
       }
     }
   }
