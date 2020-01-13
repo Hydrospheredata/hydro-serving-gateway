@@ -3,7 +3,7 @@ node {
     git 'https://github.com/Hydrospheredata/hydro-serving-gateway.git'
   }
   stage('SonarQube analysis') {
-    def scannerHome = tool 'SonarScanner 4.0';
+    def scannerHome = tool 'Sonarcloud';
     withSonarQubeEnv('Sonarcloud') { // If you have configured more than one global server connection, you can specify its name
       sh "${scannerHome}/bin/sonar-scanner"
     }
