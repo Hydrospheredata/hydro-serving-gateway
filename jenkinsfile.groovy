@@ -18,6 +18,7 @@ pipeline {
                 -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
                 -Dsonar.organization=hydrosphere \
                 -Dsonar.sources=. \
+                -Dsonar.branch.name=${env.BRANCH_NAME} \
                 -Dsonar.host.url=https://sonarcloud.io \
                 -Dsonar.login=f4edb54bde6f29b48660b944fda885099b9a2a48"
             } else {
