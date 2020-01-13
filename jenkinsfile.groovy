@@ -10,7 +10,7 @@ node {
           -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
           -Dsonar.organization=hydrosphere \
           -Dsonar.sources=. \
-          -Dsonar.branch.name=${GIT_BRANCH} \
+          -Dsonar.branch.name=${BRANCH_NAME} \
           -Dsonar.pullrequest.key=${CHANGE_ID} \
           -Dsonar.pullrequest.branch=${CHANGE_BRANCH} \
           -Dsonar.pullrequest.base=${CHANGE_TARGET} \
