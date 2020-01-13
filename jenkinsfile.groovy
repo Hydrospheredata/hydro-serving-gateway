@@ -5,8 +5,7 @@ node {
   stage('SonarQube analysis') {
     def scannerHome = tool 'Sonarcloud';
     withSonarQubeEnv('Sonarcloud') { // If you have configured more than one global server connection, you can specify its name
-      if (env.CHANGE_ID != "null") {
-        sh 'echo ${env.CHANGE_ID}'
+      if (env.CHANGE_ID != 'null') {
         sh "${scannerHome}/bin/sonar-scanner \
           -Dsonar.projectKey=Hydrospheredata_hydro-serving-gateway \
           -Dsonar.organization=hydrosphere \
