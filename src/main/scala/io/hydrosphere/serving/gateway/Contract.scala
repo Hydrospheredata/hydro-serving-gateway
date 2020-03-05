@@ -15,19 +15,36 @@ object Contract {
 
   sealed abstract class ContractViolationError extends NoStackTrace with Product with Serializable
 
-  case class ValidationErrors(errors: NonEmptyList[ContractViolationError]) extends ContractViolationError
+  case class ValidationErrors(errors: NonEmptyList[ContractViolationError]) extends ContractViolationError {
+    override def getMessage: String = {
+      val suberrors = errors.map(_.getMessage).toList.mkString("\n")
+      s"Multiple validation errors:\n$suberrors"
+    }
+  }
 
-  case class MissingField(fieldName: String) extends ContractViolationError
+  case class MissingField(fieldName: String) extends ContractViolationError {
+    override def getMessage: String = s"Missing field ${fieldName}"
+  }
 
-  case class EmptyFieldType(field: ModelField) extends ContractViolationError
+  case class EmptyFieldType(field: ModelField) extends ContractViolationError {
+    override def getMessage: String = s"Empty data type for field ${field}"
+  }
 
-  case class InvalidTensorDType(expected: DataType, got: DataType) extends ContractViolationError
+  case class InvalidTensorDType(expected: DataType, got: DataType) extends ContractViolationError {
+    override def getMessage: String = s"Expected ${expected} data type, got ${got}"
+  }
 
-  case class UnsupportedDType(got: DataType) extends ContractViolationError
+  case class UnsupportedDType(got: DataType) extends ContractViolationError {
+    override def getMessage: String = s"Got unsupported data type ${got}"
+  }
 
-  case object ImpossibleShape extends ContractViolationError
+  case object ImpossibleShape extends ContractViolationError {
+    override def getMessage: String = s"Got impossible tensor shape"
+  }
 
-  case class IncompatibleShape(got: Seq[Long], expected: Seq[Long]) extends ContractViolationError
+  case class IncompatibleShape(got: Seq[Long], expected: Seq[Long]) extends ContractViolationError {
+    override def getMessage: String = s"Expected ${expected} shape, got ${got}"
+  }
 
   def validateDataShape(data: TensorProto, expected: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
     val x = TensorUtil.verifyShape(data) // TODO(bulat) maybe we should not recalculate shape of our data?
