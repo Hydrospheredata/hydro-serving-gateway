@@ -1,6 +1,9 @@
 package io.hydrosphere.serving.gateway.grpc
 
 import cats.effect.{Clock, IO}
+import cats.implicits._
+import io.hydrosphere.serving.contract.model_contract.ModelContract
+import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
@@ -10,13 +13,27 @@ import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMet
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.tensor.StringTensor
+import io.hydrosphere.serving.tensorflow.types.DataType
 import org.scalatest.{FunSpec, Matchers}
 
 
 class ShadowSpec extends FunSpec with Matchers {
   implicit val clock = Clock.create[IO]
   it("reqstore shouldn't affect prediction") {
-    val servable = StoredServable("servable-1", "host", 42, 100, StoredModelVersion(1, 1, "model", ModelSignature.defaultInstance, "Ok"))
+    val contract = ModelSignature(
+      signatureName = "predict",
+      inputs = Seq(ModelField(
+        name = "test",
+        shape = None,
+        typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_STRING)
+      )),
+      outputs = Seq(ModelField(
+        name = "test",
+        shape = None,
+        typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_STRING)
+      ))
+    )
+    val servable = StoredServable("servable-1", "host", 42, 100, StoredModelVersion(1, 1, "model", contract, "Ok"))
     val clientCtor = new PredictionClient.Factory[IO] {
       override def make(host: String, port: Int): IO[PredictionClient[IO]] = {
         IO(new PredictionClient[IO] {
@@ -41,6 +58,7 @@ class ShadowSpec extends FunSpec with Matchers {
       requestId = "test-request"
     )
     val response = shadowed.predict(request).unsafeRunSync()
+    println(s"RESPONSE ${response.data}")
     assert(response.data.right.get.contains("test"))
   }
 }

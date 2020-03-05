@@ -3,6 +3,7 @@ package io.hydrosphere.serving.gateway.execution
 import cats.data.NonEmptyList
 import cats.effect.{Clock, IO}
 import cats.implicits._
+import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
 import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.execution.application._
@@ -18,6 +19,7 @@ import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
 import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.tensorflow.tensor.{Int64Tensor, StringTensor}
+import io.hydrosphere.serving.tensorflow.types.DataType
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -29,6 +31,27 @@ class ExecutionTests extends GenericTest {
     implicit val cs = IO.contextShift(ExecutionContext.global)
     implicit val uuid = UUIDGenerator[IO]
     implicit val rng = RandomNumberGenerator.default[IO].unsafeRunSync()
+
+    val contract = ModelSignature(
+      signatureName = "predict",
+      inputs = Seq(ModelField(
+        name = "test",
+        shape = None,
+        typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_STRING)
+      )),
+      outputs = Seq(
+        ModelField(
+          name = "test",
+          shape = None,
+          typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_STRING)
+        ),
+        ModelField(
+          name = "dummy",
+          shape = None,
+          typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_STRING)
+        )
+      )
+    )
 
     it("single servable without shadow") {
       val clientCtor = new PredictionClient.Factory[IO] {
@@ -51,7 +74,7 @@ class ExecutionTests extends GenericTest {
       }
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
-      servableStorage.add(Seq(StoredServable("test", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")))).unsafeRunSync()
+      servableStorage.add(Seq(StoredServable("test", "AYAYA", 420, 100, StoredModelVersion(42, 1, "test", contract, "Ok")))).unsafeRunSync()
 
       val appStorage = new ApplicationStorage[IO] {
         override def getByName(name: String): IO[Option[StoredApplication]] = ???
@@ -95,7 +118,7 @@ class ExecutionTests extends GenericTest {
         }
       }
 
-      val servable = StoredServable("shadow-me", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", ModelSignature.defaultInstance, "Ok"))
+      val servable = StoredServable("shadow-me", "AYAYA", 420, 100, StoredModelVersion(42, 2, "shadowed", contract, "Ok"))
 
       val lock = ReadWriteLock.reentrant[IO].unsafeRunSync()
       val servableStorage = new ServableInMemoryStorage[IO](lock, clientCtor, shadow)
@@ -138,7 +161,7 @@ class ExecutionTests extends GenericTest {
           }
         }
       }
-      val mv = StoredModelVersion(42, 1, "test", ModelSignature.defaultInstance, "Ok")
+      val mv = StoredModelVersion(42, 1, "test", contract, "Ok")
       val servable = StoredServable("s1", "AYAYA", 420, 100, mv)
       val exec = Predictor.forServable(servable, clientCtor).unsafeRunSync()
       val shadowState = ListBuffer.empty[ExecutionMetadata]
