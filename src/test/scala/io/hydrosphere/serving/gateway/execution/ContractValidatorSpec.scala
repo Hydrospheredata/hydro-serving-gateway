@@ -50,7 +50,7 @@ class ContractValidatorSpec extends GenericTest {
 
       val result = Contract.validate(request, contract)
       val output = result.left.get.errors.collect{
-        case Contract.IncompatibleShape(got, expected) => s"$got != $expected"
+        case Contract.IncompatibleShape(name, got, expected) => s"$name $got != $expected"
       }.mkString
       println(output)
       result shouldBe 'left
@@ -73,7 +73,7 @@ class ContractValidatorSpec extends GenericTest {
 
       val result = Contract.validate(request, contract)
       val output = result.left.get.errors.collect{
-        case Contract.InvalidTensorDType(got, expected) => s"$got != $expected"
+        case Contract.InvalidTensorDType(name, got, expected) => s"$name $got != $expected"
       }.mkString
       println(output)
       result shouldBe 'left
@@ -95,7 +95,7 @@ class ContractValidatorSpec extends GenericTest {
 
       val result = Contract.validate(request, contract)
       val output = result.left.get.errors.collect{
-        case Contract.IncompatibleShape(got, expected) => s"$got != $expected"
+        case Contract.IncompatibleShape(name, got, expected) => s"$name $got != $expected"
       }.mkString
       println(output)
       result shouldBe 'left
@@ -117,7 +117,7 @@ class ContractValidatorSpec extends GenericTest {
 
       val result = Contract.validate(request, contract)
       val output = result.left.get.errors.collect{
-        case Contract.IncompatibleShape(got, expected) => s"$got != $expected"
+        case Contract.IncompatibleShape(name, got, expected) => s"$name $got != $expected"
       }.mkString
       println(output)
       result shouldBe 'left

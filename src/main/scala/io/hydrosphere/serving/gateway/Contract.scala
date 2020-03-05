@@ -30,26 +30,25 @@ object Contract {
     override def getMessage: String = s"Empty data type for field ${field}"
   }
 
-  case class InvalidTensorDType(expected: DataType, got: DataType) extends ContractViolationError {
-    override def getMessage: String = s"Expected ${expected} data type, got ${got}"
+  case class InvalidTensorDType(fieldName: String, expected: DataType, got: DataType) extends ContractViolationError {
+    override def getMessage: String = s"Expected ${expected} data type for field $fieldName, got ${got}"
   }
 
-  case class UnsupportedDType(got: DataType) extends ContractViolationError {
-    override def getMessage: String = s"Got unsupported data type ${got}"
+  case class UnsupportedDType(fieldName: String, got: DataType) extends ContractViolationError {
+    override def getMessage: String = s"Got unsupported data type ${got} for field $fieldName"
   }
 
-  case object ImpossibleShape extends ContractViolationError {
-    override def getMessage: String = s"Got impossible tensor shape"
+  case class ShapelessTensor(fieldName: String) extends ContractViolationError {
+    override def getMessage: String = s"Got shapeess tensor for field $fieldName"
   }
 
-  case class IncompatibleShape(got: Seq[Long], expected: Seq[Long]) extends ContractViolationError {
-    override def getMessage: String = s"Expected ${expected} shape, got ${got}"
+  case class IncompatibleShape(fieldName: String, got: Seq[Long], expected: Seq[Long]) extends ContractViolationError {
+    override def getMessage: String = s"Expected ${expected} shape for field $fieldName, got ${got}"
   }
 
-  def validateDataShape(data: TensorProto, expected: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
-    val x = TensorUtil.verifyShape(data) // TODO(bulat) maybe we should not recalculate shape of our data?
+  def validateDataShape(name: String, data: TensorProto, expected: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
     val maybeDataShape = TensorShape(data.tensorShape) match {
-      case TensorShape.AnyDims => ImpossibleShape.asLeft
+      case TensorShape.AnyDims => ShapelessTensor(name).asLeft
       case TensorShape.Dims(dims, _) => dims.asRight
     }
     // check actual shape with expected
@@ -57,15 +56,15 @@ object Contract {
       case TensorShape.AnyDims => data.validNec
       case TensorShape.Dims(expected, _) =>
         maybeDataShape.flatMap { actual =>
-          Either.cond(actual == expected, data, IncompatibleShape(actual, expected)) //TODO(bulat) the check is too strict
+          Either.cond(actual == expected, data, IncompatibleShape(name, actual, expected)) //TODO(bulat) the check is too strict
         }.toValidatedNec
     }
   }
 
-  def validateDType(data: TensorProto, dtype: DataType, shape: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
+  def validateDType(name: String, data: TensorProto, dtype: DataType, shape: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
     if (data.dtype == dtype) {
-      validateDataShape(data, shape)
-    } else InvalidTensorDType(dtype, data.dtype).invalidNec
+      validateDataShape(name, data, shape)
+    } else InvalidTensorDType(name, dtype, data.dtype).invalidNec
   }
 
   def validateSubfields(data: TensorProto, subfields: ModelField.Subfield, shape: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
@@ -78,7 +77,7 @@ object Contract {
     field.typeOrSubfields match {
       case TypeOrSubfields.Empty => EmptyFieldType(field).invalidNec
       case TypeOrSubfields.Subfields(value) => validateSubfields(data, value, TensorShape(field.shape))
-      case TypeOrSubfields.Dtype(value) => validateDType(data, value, TensorShape(field.shape))
+      case TypeOrSubfields.Dtype(value) => validateDType(field.name, data, value, TensorShape(field.shape))
     }
   }
 
