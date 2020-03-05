@@ -5,7 +5,8 @@ import cats.effect.{Clock, IO}
 import cats.implicits._
 import io.hydrosphere.serving.contract.model_field.ModelField
 import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.gateway.GenericTest
+import io.hydrosphere.serving.gateway.Contract.ValidationErrors
+import io.hydrosphere.serving.gateway.{Contract, GenericTest}
 import io.hydrosphere.serving.gateway.execution.application._
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
@@ -14,6 +15,7 @@ import io.hydrosphere.serving.gateway.persistence.servable.ServableInMemoryStora
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredModelVersion, StoredServable, StoredStage}
 import io.hydrosphere.serving.gateway.util.ShowInstances._
 import io.hydrosphere.serving.gateway.util.{RandomNumberGenerator, ReadWriteLock, UUIDGenerator}
+import io.hydrosphere.serving.model.api.ValidationError
 import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata, TraceData}
 import io.hydrosphere.serving.tensorflow.TensorShape
 import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
@@ -97,6 +99,38 @@ class ExecutionTests extends GenericTest {
       val data = response.outputs
       assert(data.contains("dummy"))
       assert(shadowEmpty)
+    }
+
+    it("shoud fail execution if output violates the contract") {
+      val clientCtor = new PredictionClient.Factory[IO] {
+        override def make(host: String, port: Int): IO[PredictionClient[IO]] = IO {
+          new PredictionClient[IO] {
+            override def predict(request: PredictRequest): IO[PredictResponse] = IO {
+              PredictResponse(request.inputs)
+            }
+
+            override def close(): IO[Unit] = IO.unit
+          }
+        }
+      }
+      val mv = StoredModelVersion(42, 1, "test", contract, "Ok")
+      val servable = StoredServable("s1", "AYAYA", 420, 100, mv)
+      val exec = Predictor.forServable(servable, clientCtor).unsafeRunSync()
+      val shadowState = ListBuffer.empty[ExecutionMetadata]
+      val shadow: MonitoringClient[IO] = (req, resp, appInfo) => {
+        val entry = MonitoringClient.mkExecutionMetadata(mv, req.replayTrace, None, appInfo, resp.resp.latency, req.requestId)
+        shadowState += entry
+        IO(entry)
+      }
+      val shadowed = Predictor.withShadow(servable, exec, shadow, None)
+      val requestData = Map(
+        "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
+      )
+      val request = ServableRequest(requestData, "", TraceData(42, 1).some)
+      val response = shadowed.predict(request).unsafeRunSync()
+      assert(response.data.isLeft)
+      val errors = response.data.left.get.asInstanceOf[ValidationErrors].errors
+      assert(errors.head == Contract.MissingField("dummy"))
     }
 
     it("Servable with shadowing execution") {
