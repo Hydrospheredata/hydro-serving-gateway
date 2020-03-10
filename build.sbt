@@ -13,6 +13,7 @@ parallelExecution in IntegrationTest := false
 fork in(Test, test) := true
 fork in(IntegrationTest, test) := true
 fork in(IntegrationTest, testOnly) := true
+logBuffered in Test := false  // http://www.scalatest.org/user_guide/using_scalatest_with_sbt
 publishArtifact := false
 exportJars := false
 

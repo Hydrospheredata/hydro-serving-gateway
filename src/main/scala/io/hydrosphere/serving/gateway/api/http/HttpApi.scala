@@ -11,7 +11,7 @@ import cats.effect.Effect
 import cats.implicits._
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives
 import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
-import io.hydrosphere.serving.gateway.{BuildInfo, Logging}
+import io.hydrosphere.serving.gateway.{BuildInfo, Contract, Logging}
 import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, InvalidPredictMessage, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, LegacyController, ServableController}
@@ -42,7 +42,6 @@ class HttpApi[F[_]: Effect](
           "information" -> msg
         )
       )
-
     case NotFound(msg) =>
       complete(
         StatusCodes.NotFound -> Map(
@@ -50,7 +49,6 @@ class HttpApi[F[_]: Effect](
           "information" -> msg
         )
       )
-
     case InvalidArgument(msg) =>
       complete(
         StatusCodes.BadRequest -> Map(
@@ -63,6 +61,13 @@ class HttpApi[F[_]: Effect](
         StatusCodes.BadRequest -> Map(
           "error" -> msg,
           "information" -> fields.toString
+        )
+      )
+    case x: Contract.ContractViolationError =>
+      complete(
+        StatusCodes.BadRequest -> Map(
+          "error" -> "ContractViolationError",
+          "information" -> x.getMessage
         )
       )
     case p: Throwable =>
