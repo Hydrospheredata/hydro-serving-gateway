@@ -25,7 +25,7 @@ object Dependencies {
   )
 
   lazy val streamDeps = Seq(
-    "co.fs2" %% "fs2-core" % fs2Version,
+    "co.fs2" %% "fs2-core" % fs2Version
   )
 
   lazy val grpcDependencies = Seq(

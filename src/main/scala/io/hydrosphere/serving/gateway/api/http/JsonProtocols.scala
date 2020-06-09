@@ -118,7 +118,7 @@ trait JsonProtocols extends DefaultJsonProtocol with SprayJsonSupport {
   implicit val gwModel = jsonFormat2(Model.apply)
   implicit val gwDockerImage = jsonFormat2(DockerImage.apply)
 
-  implicit val gwModelVersion = jsonFormat10(ModelVersion.apply)
+  implicit val gwModelVersion: RootJsonFormat[ModelVersion] = jsonFormat11(ModelVersion.apply)
 
   implicit val storedModelVersion = jsonFormat5(StoredModelVersion.apply)
 
