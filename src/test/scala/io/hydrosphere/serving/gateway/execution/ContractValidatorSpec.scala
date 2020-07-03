@@ -35,6 +35,32 @@ class ContractValidatorSpec extends GenericTest {
       result shouldBe 'right
     }
 
+    it("should pass -1 tensor dim") {
+      val a = Int32Tensor(TensorShape.vector(4), Seq(1,2,3,4)).toProto
+      val b = Uint8Tensor(TensorShape.vector(3), Seq(1, 2, 3)).toProto
+      val request = Map(
+        "a" -> a,
+        "b" -> b
+      )
+
+      val contract = List(
+        ModelField(
+          name = "a",
+          shape = TensorShape.vector(-1).toProto,
+          typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_INT32)
+        ),
+        ModelField(
+          name = "b",
+          shape = TensorShape.vector(3).toProto,
+          typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_UINT8)
+        )
+      )
+
+      val result = Contract.validate(request, contract)
+      println(result.left.map(_.errors))
+      result shouldBe 'right
+    }
+
     it("should detect incompatible tensor shape") {
       val b = Uint8Tensor(TensorShape.vector(-1), Seq(1, 2, 3)).toProto
       val request = Map(
@@ -56,7 +82,6 @@ class ContractValidatorSpec extends GenericTest {
       result shouldBe 'left
       assert(result.left.get.errors.exists(_.isInstanceOf[Contract.IncompatibleShape]))
     }
-
 
     it("should detect incompatible tensor dtype") {
       val b = Uint8Tensor(TensorShape.vector(3), Seq(1, 2, 3)).toProto
