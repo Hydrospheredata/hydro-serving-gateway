@@ -35,6 +35,25 @@ class ContractValidatorSpec extends GenericTest {
       result shouldBe 'right
     }
 
+    it("should pass scalar tensor") {
+      val a = Int32Tensor(TensorShape.scalar, Seq(1)).toProto
+      val request = Map(
+        "a" -> a,
+      )
+
+      val contract = List(
+        ModelField(
+          name = "a",
+          shape = TensorShape.scalar.toProto,
+          typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_INT32)
+        ),
+      )
+
+      val result = Contract.validate(request, contract)
+      println(result.left.map(_.errors))
+      result shouldBe 'right
+    }
+
     it("should pass -1 tensor dim") {
       val a = Int32Tensor(TensorShape.vector(4), Seq(1,2,3,4)).toProto
       val b = Uint8Tensor(TensorShape.mat(1, 3), Seq(1, 2, 3)).toProto

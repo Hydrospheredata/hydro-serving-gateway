@@ -56,12 +56,17 @@ object Contract {
       case TensorShape.AnyDims => data.validNec
       case TensorShape.Dims(expected, _) =>
         maybeDataShape.flatMap { actual =>
-          val f = actual.zip(expected).map{
-            case (_, -1) => true
-            case (a, e) if a != e => false
-            case (_, _) => true
+          if (expected.isEmpty && actual.isEmpty) {
+            Right(data)  // both scalars - ok
+          } else {
+            val f = actual.zip(expected).map{
+              case (_, -1) => true
+              case (a, e) if a != e => false
+              case (_, _) => true
+            }
+            val isTensor = f.nonEmpty && f.reduce(_&&_)
+            Either.cond(isTensor, data, IncompatibleShape(name, actual, expected))
           }
-          Either.cond(f.nonEmpty && f.reduce(_&&_), data, IncompatibleShape(name, actual, expected))
         }.toValidatedNec
     }
   }
