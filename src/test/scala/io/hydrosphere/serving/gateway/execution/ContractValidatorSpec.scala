@@ -37,7 +37,7 @@ class ContractValidatorSpec extends GenericTest {
 
     it("should pass -1 tensor dim") {
       val a = Int32Tensor(TensorShape.vector(4), Seq(1,2,3,4)).toProto
-      val b = Uint8Tensor(TensorShape.vector(3), Seq(1, 2, 3)).toProto
+      val b = Uint8Tensor(TensorShape.mat(1, 3), Seq(1, 2, 3)).toProto
       val request = Map(
         "a" -> a,
         "b" -> b
@@ -51,7 +51,7 @@ class ContractValidatorSpec extends GenericTest {
         ),
         ModelField(
           name = "b",
-          shape = TensorShape.vector(3).toProto,
+          shape = TensorShape.mat(-1, 3).toProto,
           typeOrSubfields = ModelField.TypeOrSubfields.Dtype(DataType.DT_UINT8)
         )
       )
