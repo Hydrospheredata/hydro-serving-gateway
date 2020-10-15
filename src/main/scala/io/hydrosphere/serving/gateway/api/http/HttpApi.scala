@@ -6,7 +6,7 @@ import akka.http.scaladsl.model.HttpMethods._
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{ExceptionHandler, Route}
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorMaterializer, Materializer}
 import cats.effect.Effect
 import cats.implicits._
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives
@@ -30,7 +30,7 @@ class HttpApi[F[_]: Effect](
   servableStorage: ServableStorage[F]
 )(
   implicit val system: ActorSystem,
-  implicit val materializer: ActorMaterializer
+  implicit val materializer: Materializer
 ) extends Logging with JsonProtocols {
 
   val commonExceptionHandler = ExceptionHandler {
@@ -109,7 +109,7 @@ class HttpApi[F[_]: Effect](
 
   def start()(implicit ec: ExecutionContext) = {
     for {
-      s <- AsyncUtil.futureAsync(Http().bindAndHandle(routes, "0.0.0.0", configuration.http.port))
+      s <- AsyncUtil.futureAsync(Http().newServerAt("0.0.0.0", configuration.http.port).bind(routes))
       _ <- Logging.info[F](s"Started HTTP API server @ 0.0.0.0:${configuration.http.port}")
     } yield s
   }

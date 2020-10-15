@@ -85,7 +85,7 @@ object MonitoringClient extends Logging {
           OptionT(res)
         }.value
         execMeta = metaWithoutTrace.copy(traceData = maybeTraceData)
-        execInfo = ExecutionInformation(wrappedRequest.some, execMeta.some, wrappedResponse)
+        execInfo = ExecutionInformation.of(wrappedRequest.some, wrappedResponse, execMeta.some)
         _ <- monitoring.send(execInfo)
       } yield execMeta
 

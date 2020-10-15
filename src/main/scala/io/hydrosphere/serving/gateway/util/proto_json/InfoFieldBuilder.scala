@@ -33,12 +33,12 @@ class InfoFieldBuilder(val field: ModelField, val dataType: DataType) {
 
     verifyShape(flatData).flatMap { reshapedData =>
       val convertedData = factory match {
-        case FloatTensor | SComplexTensor => reshapedData.map(_.asInstanceOf[JsNumber].value.floatValue())
-        case DoubleTensor | DComplexTensor => reshapedData.map(_.asInstanceOf[JsNumber].value.doubleValue())
-        case Uint64Tensor | Int64Tensor => reshapedData.map(_.asInstanceOf[JsNumber].value.longValue())
+        case FloatTensor | SComplexTensor => reshapedData.map(_.asInstanceOf[JsNumber].value.floatValue)
+        case DoubleTensor | DComplexTensor => reshapedData.map(_.asInstanceOf[JsNumber].value.doubleValue)
+        case Uint64Tensor | Int64Tensor => reshapedData.map(_.asInstanceOf[JsNumber].value.longValue)
         case Int8Tensor | Uint8Tensor |
              Int16Tensor | Uint16Tensor |
-             Int32Tensor | Uint32Tensor => reshapedData.map(_.asInstanceOf[JsNumber].value.intValue())
+             Int32Tensor | Uint32Tensor => reshapedData.map(_.asInstanceOf[JsNumber].value.intValue)
         case StringTensor => reshapedData.map(_.asInstanceOf[JsString].value)
         case BoolTensor => reshapedData.map(_.asInstanceOf[JsBoolean].value)
       }
@@ -63,7 +63,7 @@ class InfoFieldBuilder(val field: ModelField, val dataType: DataType) {
         while (isShapeOk && reverseTensorDimIter.hasNext) {
           val currentDim = reverseTensorDimIter.next()
           val subCount = dimLen.toDouble / currentDim.toDouble
-          if (subCount.isWhole()) { // ok
+          if (subCount.isWhole) { // ok
             dimLen = subCount.toInt
             if (subCount < 0) {
               actualDims(actualDimId) = dimLen.abs

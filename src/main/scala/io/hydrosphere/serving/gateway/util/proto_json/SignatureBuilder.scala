@@ -14,12 +14,12 @@ class SignatureBuilder(val signature: ModelSignature) {
     val rootField = ModelField(
       "root",
       None,
-      DataProfileType.NONE,
       ModelField.TypeOrSubfields.Subfields(
         ModelField.Subfield(
           signature.inputs
         )
-      )
+      ),
+      DataProfileType.NONE
     )
 
     val fieldValidator = new ComplexFieldBuilder(rootField, signature.inputs)

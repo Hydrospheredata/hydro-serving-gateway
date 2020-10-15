@@ -4,9 +4,9 @@ import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model._
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorMaterializer, Materializer}
 import akka.util.ByteString
-import cats.effect.{Async, Sync}
+import cats.effect.{Async, ContextShift, IO, Sync}
 import cats.syntax.either._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
@@ -34,7 +34,7 @@ object ReqStore extends Logging {
     new ReqStore[F, A] {
 
       implicit val system = ActorSystem("QuickStart")
-      implicit val materializer = ActorMaterializer()
+      implicit val materializer = Materializer(system)
 
       private lazy val grpcChannel = {
         val deadline = 2 minutes
@@ -57,6 +57,7 @@ object ReqStore extends Logging {
   def create[F[_], A](cfg: ReqStoreConfig)(
     implicit
     F: Async[F],
+    cs: ContextShift[IO],
     tbs: ToByteSource[A]
   ): F[ReqStore[F, A]] = {
     HttpClient.cachedPool(cfg.host, cfg.port, 200) map (create0(cfg.prefix, _))

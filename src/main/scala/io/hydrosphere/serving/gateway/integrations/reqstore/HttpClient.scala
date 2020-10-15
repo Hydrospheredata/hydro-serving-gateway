@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpRequest
 import akka.stream.scaladsl.{Keep, Sink, Source, SourceQueueWithComplete}
-import akka.stream.{ActorMaterializer, OverflowStrategy, QueueOfferResult}
+import akka.stream.{ActorMaterializer, Materializer, OverflowStrategy, QueueOfferResult}
 import cats.effect._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
@@ -32,11 +32,11 @@ object HttpClient {
     host: String,
     port: Int,
     poolSize: Int
-  )(implicit F: Async[F]): F[HttpClient[F]] = F.delay {
+  )(implicit F: Async[F], cs: ContextShift[IO]): F[HttpClient[F]] = F.delay {
 
     implicit val as = ActorSystem("akka-http-client")
 
-    val am = ActorMaterializer()
+    val am = Materializer(as)
     val (queue, term) = akkaResources.createQueue(am, host, port, poolSize)
 
     new HttpClient[F] {
@@ -65,11 +65,11 @@ object HttpClient {
   object akkaResources {
 
     def createQueue[F[_]](
-      am: ActorMaterializer,
+      am: Materializer,
       host: String,
       port: Int,
       poolSize: Int
-    )(implicit F: Async[F]): ReqQueueWithDone[F] = {
+    )(implicit F: Async[F], cs: ContextShift[IO]): ReqQueueWithDone[F] = {
 
       implicit val mat = am
       implicit val sys = am.system

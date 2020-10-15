@@ -14,12 +14,16 @@ class ComplexFieldBuilder(val modelField: ModelField, val subfields: Seq[ModelFi
     data match {
       case arr: JsArray =>
         val eithers = arr.elements.map(convert)
-        val errors = eithers.filter(_.isLeft).map(_.left.get)
+        val errors = eithers.collect {
+          case Left(value) => value
+        }
 
         if (errors.nonEmpty) {
           Left(errors.flatten)
         } else {
-          val results = eithers.map(_.right.get)
+          val results = eithers.collect{
+            case Right(value) => value
+          }
           Right(
             MapTensor(
               TensorShape(modelField.shape),
@@ -35,7 +39,7 @@ class ComplexFieldBuilder(val modelField: ModelField, val subfields: Seq[ModelFi
 
             case Some(fieldData) =>
               val fieldValidator = new ModelFieldBuilder(field)
-              fieldValidator.convert(fieldData).right.map { tensor =>
+              fieldValidator.convert(fieldData).map { tensor =>
                 field.name -> tensor
               }
           }

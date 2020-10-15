@@ -29,7 +29,7 @@ trait GenericController extends JsonProtocols with Logging with Directives {
     optionalHeaderValueByName(TracingHeaders.xB3SpanId)
 
   def responseToJsObject(rr: PredictResponse): JsObject = {
-    val fields = rr.outputs.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v)))
+    val fields = rr.outputs.view.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v))).toMap
     JsObject(fields)
   }
 
@@ -71,7 +71,7 @@ trait GenericController extends JsonProtocols with Logging with Directives {
               signatureName = signanture.signatureName,
             )
           ),
-          inputs = tensors.mapValues(_.toProto)
+          inputs = tensors.view.mapValues(_.toProto).toMap
         ))
     }
   }

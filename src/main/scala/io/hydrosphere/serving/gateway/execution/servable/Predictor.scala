@@ -49,7 +49,7 @@ object Predictor extends Logging {
           maybeValidatedOutput = res.flatMap(d => Contract.validate(d.outputs, servable.modelVersion.predict.outputs.toList))
         } yield ServableResponse(
           data = maybeValidatedOutput,
-          latency = end - start
+          latency = (end - start).toDouble
         )
       }
 

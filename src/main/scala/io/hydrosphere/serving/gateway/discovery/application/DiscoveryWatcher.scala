@@ -151,7 +151,7 @@ class DiscoveryWatcher[F[_]](
     (apps, serv)
   }
 
-  override def preRestart(reason: Throwable, message: Option[Any]) {
+  override def preRestart(reason: Throwable, message: Option[Any]) = {
     log.error(reason, "Restarting due to [{}] when processing [{}]",
       reason.getMessage, message.getOrElse("<no message>"))
   }

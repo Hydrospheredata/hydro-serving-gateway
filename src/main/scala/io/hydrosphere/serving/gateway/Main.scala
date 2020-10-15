@@ -1,7 +1,7 @@
 package io.hydrosphere.serving.gateway
 
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorMaterializer, Materializer}
 import cats.effect._
 import cats.syntax.functor._
 import io.hydrosphere.serving.gateway.config.{ApplicationConfig, Configuration}
@@ -68,7 +68,7 @@ object Main extends IOApp with Logging {
       _ <- Resource.liftF(Logging.info[F]("Initialized GRPC API"))
 
       httpApi <- Resource.liftF(F.delay {
-        implicit val mat: ActorMaterializer = ActorMaterializer()
+        implicit val mat = Materializer(actorSystem)
         new HttpApi(config, predictionService, appStorage, servableStorage)
       })
       _ <- Resource.liftF(Logging.info[F]("Initialized HTTP API"))

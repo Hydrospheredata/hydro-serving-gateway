@@ -17,13 +17,12 @@ logBuffered in Test := false  // http://www.scalatest.org/user_guide/using_scala
 publishArtifact := false
 exportJars := false
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.13.3"
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
 scalacOptions ++= Seq(
   "-unchecked",
   "-deprecation",
   "-feature",
-  "-Ypartial-unification",
   "-language:existentials",
   "-language:higherKinds",
   "-language:implicitConversions",
