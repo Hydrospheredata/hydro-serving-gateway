@@ -3,7 +3,7 @@ properties([
     choice(choices: ['patch','minor','major'], name: 'patchVersion', description: 'What needs to be bump?'),
     string(defaultValue:'', description: 'Force set newVersion or leave empty', name: 'newVersion', trim: false),
     string(defaultValue:'', description: 'Set grpcVersion or leave empty', name: 'grpcVersion', trim: false),
-    choice(choices: ['local', 'global'], name: 'release', description: 'It\'s local release or global?'),
+    choice(choices: ['local', 'global'], name: 'releaseType', description: 'It\'s local release or global?'),
    ])
 ])
 
@@ -20,7 +20,7 @@ def checkoutRepo(String repo){
 
 def getVersion(){
     try{
-      if (params.release == 'global'){
+      if (params.releaseType == 'global'){
         //remove only quotes
         version = sh(script: "cat \"version\" | sed 's/\\\"/\\\\\"/g'", returnStdout: true ,label: "get version").trim()
       } else {
@@ -219,7 +219,7 @@ node('hydrocentral') {
 
         stage('Release'){
             if (BRANCH_NAME == 'master' || BRANCH_NAME == 'main'){
-                if (params.release == 'global'){
+                if (params.releaseType == 'global'){
                     oldVersion = getVersion()
                     bumpVersion(getVersion(),params.newVersion,params.patchVersion,'version')
                     newVersion = getVersion()
@@ -230,7 +230,7 @@ node('hydrocentral') {
                 buildDocker()
                 pushDocker(REGISTRYURL, SERVICEIMAGENAME+":$newVersion")
                 //Update helm and docker-compose if release 
-                if (params.release == 'global'){
+                if (params.releaseType == 'global'){
                     releaseService(oldVersion, newVersion)
                 } else {
                     dir('release'){
@@ -247,13 +247,13 @@ node('hydrocentral') {
             }
         }
     //post if success
-    if (params.release == 'local'){
+    if (params.releaseType == 'local' && BRANCH_NAME == 'master'){
         slackMessage()
     }
     } catch (e) {
     //post if failure
         currentBuild.result = 'FAILURE'
-    if (params.release == 'local'){
+    if (params.releaseType == 'local' && BRANCH_NAME == 'master'){
         slackMessage()
     }
         throw e
