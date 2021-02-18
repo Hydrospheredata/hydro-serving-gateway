@@ -9,7 +9,7 @@ properties([
 
 SERVICENAME = 'hydro-serving-gateway'
 SEARCHPATH = './project/Dependencies.scala'
-SEARCHGRPC = '  val servingGrpcScala = '
+SEARCHGRPC = 'val servingGrpcScala'
 REGISTRYURL = 'hydrosphere'
 SERVICEIMAGENAME = 'serving-gateway'
 GITHUBREPO  = "github.com/Hydrospheredata/hydro-serving-gateway.git"
@@ -223,10 +223,10 @@ node('hydrocentral') {
                     oldVersion = getVersion()
                     bumpVersion(getVersion(),params.newVersion,params.patchVersion,'version')
                     newVersion = getVersion()
+                    bumpGrpc(grpcVersion, SEARCHGRPC, params.patchVersion, SEARCHPATH)
                 } else {
                     newVersion = getVersion()
                 }
-                bumpGrpc(grpcVersion, SEARCHGRPC, params.patchVersion, SEARCHPATH) 
                 buildDocker()
                 pushDocker(REGISTRYURL, SERVICEIMAGENAME+":$newVersion")
                 //Update helm and docker-compose if release 
