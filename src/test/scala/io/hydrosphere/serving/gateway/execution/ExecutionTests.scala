@@ -95,7 +95,7 @@ class ExecutionTests extends GenericTest {
           "test" -> StringTensor(TensorShape.scalar, Seq("hello")).toProto
         )
       )
-      val response = executionService.predictWithoutShadow(request).unsafeRunSync()
+      val response = executionService.predictShadowlessServable(request).unsafeRunSync()
       val data = response.outputs
       assert(data.contains("dummy"))
       assert(shadowEmpty)

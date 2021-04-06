@@ -5,11 +5,11 @@ import cats.implicits._
 import io.grpc.Server
 import io.grpc.netty.NettyServerBuilder
 import io.hydrosphere.serving.gateway.Logging
-import io.hydrosphere.serving.gateway.api.GatewayServiceGrpc
+import io.hydrosphere.serving.proto.gateway.api.GatewayServiceGrpc
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
 import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.util.GrpcUtil.BuilderWrapper
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
+import io.hydrosphere.serving.proto.runtime.api.PredictionServiceGrpc
 
 import scala.concurrent.ExecutionContext
 
@@ -23,9 +23,7 @@ class GrpcApi[F[_]: Effect](
     .forPort(appConfig.grpc.port)
     .maxInboundMessageSize(appConfig.grpc.maxMessageSize))
 
-  val predictionService = new PredictionServiceEndpoint[F](executionService)
   val gatewayService = new GatewayServiceEndpoint[F](executionService)
-  builder.addService(PredictionServiceGrpc.bindService(predictionService, grpcEC))
   builder.addService(GatewayServiceGrpc.bindService(gatewayService, grpcEC))
 
   val server: Server = builder.build

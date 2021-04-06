@@ -8,7 +8,7 @@ import cats.implicits._
 import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.discovery.serving.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
+import io.hydrosphere.serving.proto.discovery.api.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage

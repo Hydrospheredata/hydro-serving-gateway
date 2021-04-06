@@ -3,8 +3,9 @@ package io.hydrosphere.serving.gateway.persistence
 import cats.Traverse
 import cats.data.NonEmptyList
 import cats.implicits._
-import io.hydrosphere.serving.contract.model_signature.ModelSignature
-import io.hydrosphere.serving.manager.grpc.entities.Stage
+import io.circe.generic.JsonCodec
+import io.hydrosphere.serving.proto.contract.signature.ModelSignature
+import io.hydrosphere.serving.proto.manager.entities.Stage
 
 case class StoredStage(
   id: String,

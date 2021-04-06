@@ -3,8 +3,8 @@ package io.hydrosphere.serving.gateway.execution.grpc
 import cats.effect.Async
 import cats.implicits._
 import io.hydrosphere.serving.gateway.util.AsyncUtil
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.api.prediction_service.PredictionServiceGrpc
+import io.hydrosphere.serving.proto.runtime.api.{PredictRequest, PredictResponse}
+import io.hydrosphere.serving.proto.runtime.api.PredictionServiceGrpc
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration

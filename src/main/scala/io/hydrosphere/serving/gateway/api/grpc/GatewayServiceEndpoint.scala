@@ -5,12 +5,10 @@ import cats.effect.Effect
 import cats.effect.implicits._
 import cats.implicits._
 import io.hydrosphere.serving.gateway.GatewayError
-import io.hydrosphere.serving.gateway.api.GatewayServiceGrpc.GatewayService
-import io.hydrosphere.serving.gateway.api.{ReplayRequest, ServablePredictRequest}
+import io.hydrosphere.serving.proto.gateway.api.GatewayServiceGrpc.GatewayService
+import io.hydrosphere.serving.proto.gateway.api.GatewayPredictRequest
+import io.hydrosphere.serving.proto.runtime.api.PredictResponse
 import io.hydrosphere.serving.gateway.execution.ExecutionService
-import io.hydrosphere.serving.monitoring.metadata.TraceData
-import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.Future
@@ -19,56 +17,42 @@ class GatewayServiceEndpoint[F[_]](
   executor: ExecutionService[F]
 )(implicit F: Effect[F]) extends GatewayService with Logging {
 
-  override def replayModel(request: ReplayRequest): Future[PredictResponse] = {
-    logger.info(s"Got replay request from GRPC. modelSpec=${request.servableName}")
-    val result = for {
-      resultTuple <- OptionT.fromOption[F](GatewayServiceEndpoint.replayToPredict(request))
-        .getOrElseF(F.raiseError(GatewayError.InvalidArgument("Invalid ReplayRequest")))
-      (req, time) = resultTuple
-      res <- executor.replay(req, time.some)
-    } yield res
-
-    result
-      .attempt
-      .map {
-        case Right(res) =>
-          logger.info("Returning successful GRPC replay response")
-          res.asRight
-        case Left(error) =>
-          logger.warn("Returning failed GRPC replay response", error)
-          error.asLeft
-      }
-      .rethrow.toIO.unsafeToFuture()
-  }
-
-  override def predictServable(request: ServablePredictRequest): Future[PredictResponse] = {
-    logger.info(s"Got servable predict request. servable=${request.servableName}")
+  override def predictServable(request: GatewayPredictRequest): Future[PredictResponse] = {
+    logger.debug(s"Got servable predict request, servable=${request.name}")
     val flow = for {
-      resp <- executor.predictServable(request.data, request.servableName)
+      resp <- executor.predictServable(request)
     } yield resp
     flow.toIO.unsafeToFuture()
   }
 
-  override def shadowlessPredictServable(request: ServablePredictRequest): Future[PredictResponse] = {
-    logger.info(s"Got shadowless request from GRPC. servable=${request.servableName}")
-    executor.predictWithoutShadow(PredictRequest(ModelSpec(name=request.servableName).some, request.data))
+  override def shadowlessPredictServable(request: GatewayPredictRequest): Future[PredictResponse] = {
+    logger.debug(s"Got shadowless request from, servable=${request.name}")
+    executor.predictShadowlessServable(request)
       .attempt
       .map {
         case Right(result) =>
-          logger.info("Returning successful GRPC response")
+          logger.debug("Returning successful shadowless servable predict response")
           result.asRight
         case Left(error) =>
-          logger.warn("Returning failed GRPC response", error)
+          logger.warn("Returning failed shadowless servable predict  response", error)
           error.asLeft
       }
       .rethrow.toIO.unsafeToFuture()
   }
-}
 
-object GatewayServiceEndpoint {
-  def replayToPredict(replayRequest: ReplayRequest): Option[(PredictRequest, TraceData)] = {
-    replayRequest.originTd.map { time =>
-      PredictRequest(ModelSpec(replayRequest.servableName).some, replayRequest.data) -> time
-    }
+  override def predictApplication(request: GatewayPredictRequest): Future[PredictResponse] = {
+    logger.debug(s"Got application predict request, application=${request.name}")
+    executor.predictApplication(request)
+      .attempt
+      .map {
+        case Right(result) =>
+          logger.debug("Returning successful application predict response")
+          result.asRight
+        case Left(error) =>
+          logger.warn("Returning failed application predict response", error)
+          error.asLeft
+      }
+      .rethrow.toIO.unsafeToFuture()
   }
+
 }

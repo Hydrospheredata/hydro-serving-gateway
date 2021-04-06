@@ -9,8 +9,8 @@ import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.util.UUIDGenerator
-import io.hydrosphere.serving.monitoring.metadata.TraceData
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
+import io.hydrosphere.serving.proto.runtime.api.PredictResponse
+import io.hydrosphere.serving.proto.gateway.api.GatewayPredictRequest
 
 
 /**
@@ -19,13 +19,11 @@ import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictRes
   * Handles both Servables and Applications.
   */
 trait ExecutionService[F[_]] {
-  def predict(data: PredictRequest): F[PredictResponse]
+  def predictShadowlessServable(request: GatewayPredictRequest): F[PredictResponse]
 
-  def predictWithoutShadow(data: PredictRequest): F[PredictResponse]
+  def predictServable(request: GatewayPredictRequest): F[PredictResponse]
 
-  def predictServable(data: MessageData, name: String): F[PredictResponse]
-
-  def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse]
+  def predictApplication(request: GatewayPredictRequest): F[PredictResponse]
 }
 
 object ExecutionService {
@@ -38,51 +36,36 @@ object ExecutionService {
   ): F[ExecutionService[F]] = F.delay {
     new ExecutionService[F] {
 
-      override def predict(data: PredictRequest): F[PredictResponse] = {
+      override def predictShadowlessServable(request: GatewayPredictRequest): F[PredictResponse] = {
         for {
-          res <- replay(data, None)
-        } yield res
-      }
-
-      override def replay(data: PredictRequest, time: Option[TraceData]): F[PredictResponse] = {
-        for {
-          modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          executor <- OptionT(servableStorage.getShadowedExecutor(modelSpec.name))
-            .orElseF(appStorage.getExecutor(modelSpec.name))
-            .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find servable ${modelSpec.name}")))
+          servable <- OptionT(servableStorage.getExecutor(request.name))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor ${request.name} is not found")))
           id <- uuid.random.map(_.toString)
-          request = ServableRequest(
-            data = data.inputs,
-            replayTrace = time,
+          req = ServableRequest(
+            data = request.data,
             requestId = id
           )
-          res <- executor.predict(request)
+          res <- servable.predict(req)
           responseData <- F.fromEither(res.data)
         } yield PredictResponse(responseData)
       }
 
-      override def predictWithoutShadow(data: PredictRequest): F[PredictResponse] = {
+      override def predictServable(request: GatewayPredictRequest): F[PredictResponse] = {
         for {
-          modelSpec <- F.fromOption(data.modelSpec, GatewayError.InvalidArgument("ModelSpec is not defined"))
-          servable <- OptionT(servableStorage.getExecutor(modelSpec.name))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Executor $modelSpec is not found")))
+          servable <- OptionT(servableStorage.getShadowedExecutor(request.name))
+            .getOrElseF(F.raiseError(GatewayError.NotFound(s"Servable ${request.name} not found")))
           id <- uuid.random.map(_.toString)
-          request = ServableRequest(
-            data = data.inputs,
-            replayTrace = None,
-            requestId = id
-          )
-          res <- servable.predict(request)
-          responseData <- F.fromEither(res.data)
-        } yield PredictResponse(responseData)
+          res <- servable.predict(ServableRequest(request.data, id))
+          response <- F.fromEither(res.data)
+        } yield PredictResponse(response)
       }
 
-      override def predictServable(data: MessageData, name: String): F[PredictResponse] = {
+      override def predictApplication(request: GatewayPredictRequest): F[PredictResponse] = {
         for {
-          servable <- OptionT(servableStorage.getShadowedExecutor(name))
-            .getOrElseF(F.raiseError(GatewayError.NotFound(s"Servable $name not found")))
+          app <- OptionT(appStorage.getExecutor(request.name))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Application ${request.name} is not found")))
           id <- uuid.random.map(_.toString)
-          res <- servable.predict(ServableRequest(data, id))
+          res <- app.predict(ServableRequest(request.data, id))
           response <- F.fromEither(res.data)
         } yield PredictResponse(response)
       }

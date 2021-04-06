@@ -1,14 +1,10 @@
 package io.hydrosphere.serving.gateway.execution
 
 import io.hydrosphere.serving.gateway.execution.servable.Predictor
-import io.hydrosphere.serving.gateway.integrations.reqstore.ReqStore
 import io.hydrosphere.serving.gateway.persistence.StoredServable
-import io.hydrosphere.serving.monitoring.api.ExecutionInformation.ResponseOrError
-import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
-import io.hydrosphere.serving.tensorflow.tensor.TensorProto
+import io.hydrosphere.serving.proto.contract.tensor.Tensor
 
 object Types {
-  type MessageData = Map[String, TensorProto]
+  type MessageData = Map[String, Tensor]
   type PredictorCtor[F[_]] = StoredServable => F[Predictor[F]]
-  type ServingReqStore[F[_]] = ReqStore[F, (PredictRequest, ResponseOrError)]
 }
