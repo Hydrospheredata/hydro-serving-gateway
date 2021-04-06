@@ -19,7 +19,11 @@ object GrpcChannel {
     (host: String, port: Int) => {
       for {
         ch <- F.delay {
-          val builder = ManagedChannelBuilder.forAddress(host, port)
+          val builder = if (host.startsWith("dns:")) {
+            ManagedChannelBuilder.forTarget(s"$host:$port")
+          } else {
+            ManagedChannelBuilder.forAddress(host, port)
+          }
           builder.usePlaintext()
           builder.enableRetry()
           builder.build()

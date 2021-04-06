@@ -18,10 +18,10 @@ class ServableController[F[_]](
     post {
       entity(as[Json]) { json =>
         completeF {
-          logger.info(s"Servable serve request: name=$servableName")
+          logger.info(s"Serve servable request, name=$servableName")
           for {
             servable <- OptionT(servableStorage.get(servableName))
-              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find a servable instance with name $servableName")))
+              .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find a servable with name $servableName")))
             req <- jsonToRequest(servableName, json, servable.modelVersion.signature)
             res <- executor.predictServable(req)
           } yield responseToJsObject(res)

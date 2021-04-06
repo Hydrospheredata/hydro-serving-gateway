@@ -18,7 +18,7 @@ class ApplicationController[F[_]](
     post {
       entity(as[Json]) { json =>
         completeF {
-          logger.info(s"Serve request: name=$appName")
+          logger.info(s"Serve application request, name=$appName")
           for {
             app <- OptionT(appStorage.getByName(appName))
               .getOrElseF(F.raiseError(GatewayError.NotFound(s"Can't find application with the name $appName")))
