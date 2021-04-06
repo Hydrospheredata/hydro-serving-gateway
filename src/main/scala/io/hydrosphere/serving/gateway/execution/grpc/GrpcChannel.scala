@@ -26,6 +26,7 @@ object GrpcChannel {
           }
           builder.usePlaintext()
           builder.enableRetry()
+          builder.defaultLoadBalancingPolicy("round_robin")
           builder.build()
         }
       } yield new GrpcChannel[F] {
