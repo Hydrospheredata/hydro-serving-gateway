@@ -19,10 +19,7 @@ class GatewayServiceEndpoint[F[_]](
 
   override def predictServable(request: GatewayPredictRequest): Future[PredictResponse] = {
     logger.debug(s"Got servable predict request, servable=${request.name}")
-    val flow = for {
-      resp <- executor.predictServable(request)
-    } yield resp
-    flow.toIO.unsafeToFuture()
+    executor.predictServable(request).toIO.unsafeToFuture()
   }
 
   override def shadowlessPredictServable(request: GatewayPredictRequest): Future[PredictResponse] = {
