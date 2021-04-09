@@ -4,20 +4,19 @@ import akka.http.scaladsl.marshalling.ToResponseMarshaller
 import akka.http.scaladsl.server.Directives
 import cats.effect.implicits._
 import cats.effect.{Effect, Sync}
-import io.hydrosphere.serving.contract.model_signature.ModelSignature
+import io.circe._
+import io.hydrosphere.serving.proto.contract.signature.ModelSignature
 import io.hydrosphere.serving.gateway.GatewayError
-import io.hydrosphere.serving.gateway.api.http.JsonProtocols
-import io.hydrosphere.serving.gateway.util.proto_json.SignatureBuilder
 import io.hydrosphere.serving.http.TracingHeaders
-import io.hydrosphere.serving.model.api.ValidationError
-import io.hydrosphere.serving.model.api.json.TensorJsonLens
-import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.tensor.TypedTensorFactory
+import io.hydrosphere.serving.proto.contract.errors.ValidationError
+import io.hydrosphere.serving.proto.contract.tensor.builders.SignatureBuilder
+import io.hydrosphere.serving.proto.runtime.api.PredictResponse
+import io.hydrosphere.serving.proto.contract.tensor.definitions.TypedTensorFactory
+import io.hydrosphere.serving.proto.contract.tensor.conversions.json.TensorJsonLens
+import io.hydrosphere.serving.proto.gateway.api.GatewayPredictRequest
 import org.apache.logging.log4j.scala.Logging
-import spray.json.JsObject
 
-trait GenericController extends JsonProtocols with Logging with Directives {
+trait GenericController extends Logging with Directives {
   def completeF[F[_], A](body : => F[A])(implicit F: Effect[F], m: ToResponseMarshaller[A]) = {
     complete {
       body.toIO.unsafeToFuture()
@@ -28,20 +27,17 @@ trait GenericController extends JsonProtocols with Logging with Directives {
     optionalHeaderValueByName(TracingHeaders.xB3TraceId) &
     optionalHeaderValueByName(TracingHeaders.xB3SpanId)
 
-  def responseToJsObject(rr: PredictResponse): JsObject = {
-    val fields = rr.outputs.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v)))
-    JsObject(fields)
+  def responseToJsObject(rr: PredictResponse): Json = {
+    Json.fromFields(rr.outputs.mapValues(v => TensorJsonLens.toJson(TypedTensorFactory.create(v))))
   }
 
   def decodeValidationError(err: ValidationError): String = {
     err match {
-      case ValidationError.SignatureMissingError(expectedSignature, modelContract) =>
-        s"No signature found with name '${expectedSignature}' in contract '${modelContract.modelName}'"
       case ValidationError.SignatureValidationError(suberrors, modelSignature) =>
         s"Signature '${modelSignature.signatureName}' validation errors: ${suberrors.map(decodeValidationError).mkString}"
       case ValidationError.FieldMissingError(expectedField) =>
         s"Missing '${expectedField}' field"
-      case ValidationError.ComplexFieldValidationError(suberrors, field) =>
+      case ValidationError.NestedFieldValidationError(suberrors, field) =>
         s"Validation for '${field}' map field failed: ${suberrors.map(decodeValidationError).mkString}"
       case ValidationError.IncompatibleFieldTypeError(field, expectedType) =>
         s"Field '$field' with incompatible data type $expectedType"
@@ -56,22 +52,17 @@ trait GenericController extends JsonProtocols with Logging with Directives {
 
   def jsonToRequest[F[_]](
     name: String,
-    inputs: JsObject,
+    inputs: Json,
     signanture: ModelSignature
-  )(implicit F: Sync[F]): F[PredictRequest] = F.defer {
+  )(implicit F: Sync[F]): F[GatewayPredictRequest] = F.defer {
     new SignatureBuilder(signanture).convert(inputs) match {
       case Left(value) =>
         val errorMsg = decodeValidationError(value)
         F.raiseError(GatewayError.InvalidArgument(errorMsg))
       case Right(tensors) =>
-        F.delay(PredictRequest(
-          modelSpec = Some(
-            ModelSpec(
-              name = name,
-              signatureName = signanture.signatureName,
-            )
-          ),
-          inputs = tensors.mapValues(_.toProto)
+        F.delay(GatewayPredictRequest(
+          name = name,
+          data = tensors.mapValues(_.toProto)
         ))
     }
   }

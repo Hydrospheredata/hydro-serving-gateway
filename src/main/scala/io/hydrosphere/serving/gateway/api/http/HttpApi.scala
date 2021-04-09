@@ -14,11 +14,12 @@ import ch.megard.akka.http.cors.scaladsl.settings.CorsSettings
 import io.hydrosphere.serving.gateway.{BuildInfo, Contract, Logging}
 import io.hydrosphere.serving.gateway.GatewayError.{InternalError, InvalidArgument, InvalidPredictMessage, NotFound}
 import io.hydrosphere.serving.gateway.config.ApplicationConfig
-import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, LegacyController, ServableController}
+import io.hydrosphere.serving.gateway.api.http.controllers.{ApplicationController, ServableController}
 import io.hydrosphere.serving.gateway.execution.ExecutionService
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
 import io.hydrosphere.serving.gateway.persistence.servable.ServableStorage
 import io.hydrosphere.serving.gateway.util.AsyncUtil
+import de.heikoseeberger.akkahttpcirce.ErrorAccumulatingCirceSupport._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.ExecutionContext
@@ -31,7 +32,7 @@ class HttpApi[F[_]: Effect](
 )(
   implicit val system: ActorSystem,
   implicit val materializer: ActorMaterializer
-) extends Logging with JsonProtocols {
+) extends Logging {
 
   val commonExceptionHandler = ExceptionHandler {
     case InternalError(msg) =>
@@ -80,15 +81,11 @@ class HttpApi[F[_]: Effect](
       )
   }
 
-  val legacyController = new LegacyController(executionService, appStorage)
-
   val applicationController = new ApplicationController(appStorage, executionService)
-
   val servableController = new ServableController(servableStorage, executionService)
 
   val routes: Route = CorsDirectives.cors(CorsSettings.defaultSettings.withAllowedMethods(Seq(GET, POST, HEAD, OPTIONS, PUT, DELETE))) {
     handleExceptions(commonExceptionHandler) {
-      legacyController.routes ~
       pathPrefix("gateway") {
         applicationController.routes ~
           servableController.routes ~

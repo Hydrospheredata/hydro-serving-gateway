@@ -4,7 +4,6 @@ final case class ApplicationConfig(
   grpc: GrpcConfig,
   http: HttpConfig,
   shadowingOn: Boolean,
-  reqstore: ReqStoreConfig,
   apiGateway: ApiGatewayConfig,
   streaming: Option[KafkaConfig] = None
 )

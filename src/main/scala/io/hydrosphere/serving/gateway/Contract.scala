@@ -2,12 +2,12 @@ package io.hydrosphere.serving.gateway
 
 import cats.data.{NonEmptyList, ValidatedNec}
 import cats.implicits._
-import io.hydrosphere.serving.contract.model_field.ModelField
-import io.hydrosphere.serving.contract.model_field.ModelField.TypeOrSubfields
-import io.hydrosphere.serving.model.api.TensorUtil
-import io.hydrosphere.serving.tensorflow.TensorShape
-import io.hydrosphere.serving.tensorflow.tensor.TensorProto
-import io.hydrosphere.serving.tensorflow.types.DataType
+import io.hydrosphere.serving.proto.contract.field.ModelField
+import io.hydrosphere.serving.proto.contract.field.ModelField.TypeOrSubfields
+import io.hydrosphere.serving.proto.contract.tensor.TensorShape
+import io.hydrosphere.serving.proto.contract.tensor.definitions.Shape
+import io.hydrosphere.serving.proto.contract.tensor.Tensor
+import io.hydrosphere.serving.proto.contract.types.DataType
 
 import scala.util.control.NoStackTrace
 
@@ -46,52 +46,52 @@ object Contract {
     override def getMessage: String = s"Expected ${expected} shape for field $fieldName, got ${got}"
   }
 
-  def validateDataShape(name: String, data: TensorProto, expected: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
-    val maybeDataShape = TensorShape(data.tensorShape) match {
-      case TensorShape.AnyDims => ShapelessTensor(name).asLeft
-      case TensorShape.Dims(dims, _) => dims.asRight
+  def validateDataShape(name: String, data: Tensor, expected: Shape): ValidatedNec[ContractViolationError, Tensor] = {
+    val maybeDataShape = Shape(data.tensorShape) match {
+      case Shape.AnyShape => ShapelessTensor(name).asLeft
+      case Shape.LocalShape(dims) => dims.asRight
     }
     // check actual shape with expected
     expected match {
-      case TensorShape.AnyDims => data.validNec
-      case TensorShape.Dims(expected, _) =>
+      case Shape.AnyShape => data.validNec
+      case Shape.LocalShape(dims) =>
         maybeDataShape.flatMap { actual =>
-          if (expected.isEmpty && actual.isEmpty) {
-            Right(data)  // both scalars - ok
+          if (dims.isEmpty && actual.isEmpty) {
+            Right(data)
           } else {
-            val f = actual.zip(expected).map{
+            val f = actual.zip(dims).map{
               case (_, -1) => true
               case (a, e) if a != e => false
               case (_, _) => true
             }
             val isTensor = f.nonEmpty && f.reduce(_&&_)
-            Either.cond(isTensor, data, IncompatibleShape(name, actual, expected))
+            Either.cond(isTensor, data, IncompatibleShape(name, actual, dims))
           }
         }.toValidatedNec
     }
   }
 
-  def validateDType(name: String, data: TensorProto, dtype: DataType, shape: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
+  def validateDType(name: String, data: Tensor, dtype: DataType, shape: Shape): ValidatedNec[ContractViolationError, Tensor] = {
     if (data.dtype == dtype) {
       validateDataShape(name, data, shape)
     } else InvalidTensorDType(name, dtype, data.dtype).invalidNec
   }
 
-  def validateSubfields(data: TensorProto, subfields: ModelField.Subfield, shape: TensorShape): ValidatedNec[ContractViolationError, TensorProto] = {
+  def validateSubfields(data: Tensor, subfields: ModelField.Subfield): ValidatedNec[ContractViolationError, Tensor] = {
     data.mapVal.toList.traverse { sub =>
       validateDataMap(sub.subtensors, subfields.data.toList)
     }.as(data)
   }
 
-  def validateField(data: TensorProto, field: ModelField): ValidatedNec[ContractViolationError, TensorProto] = {
+  def validateField(data: Tensor, field: ModelField): ValidatedNec[ContractViolationError, Tensor] = {
     field.typeOrSubfields match {
       case TypeOrSubfields.Empty => EmptyFieldType(field).invalidNec
-      case TypeOrSubfields.Subfields(value) => validateSubfields(data, value, TensorShape(field.shape))
-      case TypeOrSubfields.Dtype(value) => validateDType(field.name, data, value, TensorShape(field.shape))
+      case TypeOrSubfields.Subfields(value) => validateSubfields(data, value)
+      case TypeOrSubfields.Dtype(value) => validateDType(field.name, data, value, Shape(field.shape))
     }
   }
 
-  def validateDataMap(data: Map[String, TensorProto], fields: List[ModelField]): ValidatedNec[ContractViolationError, Map[String, TensorProto]] = {
+  def validateDataMap(data: Map[String, Tensor], fields: List[ModelField]): ValidatedNec[ContractViolationError, Map[String, Tensor]] = {
     val res = fields.traverse { field =>
       data.get(field.name) match {
         case Some(value) => validateField(value, field).map(x => field.name -> x)
@@ -101,7 +101,7 @@ object Contract {
     res.map(x => x.toMap)
   }
 
-  def validate(data: Map[String, TensorProto], fields: List[ModelField]): Either[ValidationErrors, Map[String, TensorProto]] = {
+  def validate(data: Map[String, Tensor], fields: List[ModelField]): Either[ValidationErrors, Map[String, Tensor]] = {
     validateDataMap(data, fields)
       .toEither
       .leftMap(errors => ValidationErrors(errors.toNonEmptyList))

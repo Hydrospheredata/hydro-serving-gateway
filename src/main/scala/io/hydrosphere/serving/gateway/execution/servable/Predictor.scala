@@ -8,9 +8,8 @@ import io.hydrosphere.serving.gateway.{Contract, Logging}
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.persistence.StoredServable
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
-import io.hydrosphere.serving.tensorflow.api.model.ModelSpec
-import io.hydrosphere.serving.tensorflow.api.predict.PredictRequest
+import io.hydrosphere.monitoring.proto.sonar.entities.{ApplicationInfo, ExecutionMetadata}
+import io.hydrosphere.serving.proto.runtime.api.PredictRequest
 
 
 trait Predictor[F[_]] {
@@ -33,20 +32,13 @@ object Predictor extends Logging {
       stub <- clientCtor.make(servable.host, servable.port)
     } yield new CloseablePredictor[F] {
       def predict(request: ServableRequest): F[ServableResponse] = {
-        val req = PredictRequest(
-          modelSpec = Some(ModelSpec(
-            name = servable.modelVersion.name,
-            version = servable.modelVersion.version.some,
-            signatureName = servable.modelVersion.predict.signatureName
-          )),
-          inputs = request.data
-        )
+        val req = PredictRequest(inputs = request.data)
         for {
-          validatedInput <- F.fromEither(Contract.validate(req.inputs, servable.modelVersion.predict.inputs.toList))
+          validatedInput <- F.fromEither(Contract.validate(req.inputs, servable.modelVersion.signature.inputs.toList))
           start <- clock.monotonic(TimeUnit.MILLISECONDS)
           res <- stub.predict(req.copy(inputs = validatedInput)).attempt
           end <- clock.monotonic(TimeUnit.MILLISECONDS)
-          maybeValidatedOutput = res.flatMap(d => Contract.validate(d.outputs, servable.modelVersion.predict.outputs.toList))
+          maybeValidatedOutput = res.flatMap(d => Contract.validate(d.outputs, servable.modelVersion.signature.outputs.toList))
         } yield ServableResponse(
           data = maybeValidatedOutput,
           latency = end - start

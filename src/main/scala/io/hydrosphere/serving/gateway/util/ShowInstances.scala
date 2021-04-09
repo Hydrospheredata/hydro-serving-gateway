@@ -5,10 +5,11 @@ import cats.Show
 import io.hydrosphere.serving.gateway.execution.Types.MessageData
 import io.hydrosphere.serving.gateway.execution.application.AssociatedResponse
 import io.hydrosphere.serving.gateway.execution.servable.{ServableRequest, ServableResponse}
-import io.hydrosphere.serving.monitoring.metadata.ApplicationInfo
-import io.hydrosphere.serving.tensorflow.TensorShape
-import io.hydrosphere.serving.tensorflow.TensorShape.{AnyDims, Dims}
-import io.hydrosphere.serving.tensorflow.tensor.{TensorProto, TypedTensorFactory}
+import io.hydrosphere.monitoring.proto.sonar.entities.ApplicationInfo
+import io.hydrosphere.serving.proto.contract.tensor.definitions.Shape
+import io.hydrosphere.serving.proto.contract.tensor.definitions.Shape.{LocalShape, AnyShape}
+import io.hydrosphere.serving.proto.contract.tensor.definitions.TypedTensorFactory
+import io.hydrosphere.serving.proto.contract.tensor.Tensor
 
 object ShowInstances {
   implicit def t3[A: Show, B: Show, C: Show] = new Show[(A, B, C)] {
@@ -20,15 +21,15 @@ object ShowInstances {
     override def show(t: ApplicationInfo): String = t.toString
   }
 
-  implicit val tshape = new Show[TensorShape] {
-    override def show(t: TensorShape): String = t match {
-      case AnyDims => "any"
-      case Dims(dims, _) => "[" + dims.map(_.show).mkString(", ") + "]"
+  implicit val tshape = new Show[Shape] {
+    override def show(t: Shape): String = t match {
+      case AnyShape => "any"
+      case LocalShape(dims) => "[" + dims.map(_.show).mkString(", ") + "]"
     }
   }
 
-  implicit val tShow = new Show[TensorProto] {
-    override def show(t: TensorProto): String = {
+  implicit val tShow = new Show[Tensor] {
+    override def show(t: Tensor): String = {
       val wrapped = TypedTensorFactory.create(t)
       s"Tensor(type=${wrapped.dtype}, shape=${wrapped.shape.show}, data=${wrapped.data})"
     }

@@ -2,24 +2,23 @@ package io.hydrosphere.serving.gateway.grpc
 
 import cats.effect.{Clock, IO}
 import cats.implicits._
-import io.hydrosphere.serving.contract.model_contract.ModelContract
-import io.hydrosphere.serving.contract.model_field.ModelField
-import io.hydrosphere.serving.contract.model_signature.ModelSignature
+import io.hydrosphere.serving.proto.contract.field.ModelField
+import io.hydrosphere.serving.proto.contract.signature.ModelSignature
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest}
 import io.hydrosphere.serving.gateway.persistence.{StoredModelVersion, StoredServable}
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
-import io.hydrosphere.serving.tensorflow.TensorShape
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
-import io.hydrosphere.serving.tensorflow.tensor.StringTensor
-import io.hydrosphere.serving.tensorflow.types.DataType
+import io.hydrosphere.monitoring.proto.sonar.entities.{ApplicationInfo, ExecutionMetadata}
+import io.hydrosphere.serving.proto.contract.tensor.definitions.Shape
+import io.hydrosphere.serving.proto.runtime.api.{PredictRequest, PredictResponse}
+import io.hydrosphere.serving.proto.contract.tensor.definitions.StringTensor
+import io.hydrosphere.serving.proto.contract.types.DataType
 import org.scalatest.{FunSpec, Matchers}
 
 
 class ShadowSpec extends FunSpec with Matchers {
   implicit val clock = Clock.create[IO]
-  it("reqstore shouldn't affect prediction") {
+  it("monitoring shouldn't affect prediction") {
     val contract = ModelSignature(
       signatureName = "predict",
       inputs = Seq(ModelField(
@@ -53,7 +52,7 @@ class ShadowSpec extends FunSpec with Matchers {
 
     val request = ServableRequest(
       data = Map(
-        "test" -> StringTensor(TensorShape.scalar, Seq("tset")).toProto
+        "test" -> StringTensor(Shape.scalar, Seq("tset")).toProto
       ),
       requestId = "test-request"
     )

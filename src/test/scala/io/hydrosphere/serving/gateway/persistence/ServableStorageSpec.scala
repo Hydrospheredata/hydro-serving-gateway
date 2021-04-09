@@ -1,15 +1,15 @@
 package io.hydrosphere.serving.gateway.persistence
 
 import cats.effect.IO
-import io.hydrosphere.serving.contract.model_signature.ModelSignature
+import io.hydrosphere.serving.proto.contract.signature.ModelSignature
 import io.hydrosphere.serving.gateway.GenericTest
 import io.hydrosphere.serving.gateway.execution.application.{AssociatedResponse, MonitoringClient}
 import io.hydrosphere.serving.gateway.execution.grpc.PredictionClient
 import io.hydrosphere.serving.gateway.execution.servable.ServableRequest
 import io.hydrosphere.serving.gateway.persistence.servable.ServableInMemoryStorage
 import io.hydrosphere.serving.gateway.util.ReadWriteLock
-import io.hydrosphere.serving.monitoring.metadata.{ApplicationInfo, ExecutionMetadata}
-import io.hydrosphere.serving.tensorflow.api.predict.{PredictRequest, PredictResponse}
+import io.hydrosphere.monitoring.proto.sonar.entities.{ApplicationInfo, ExecutionMetadata}
+import io.hydrosphere.serving.proto.runtime.api.{PredictRequest, PredictResponse}
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext

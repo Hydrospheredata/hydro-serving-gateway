@@ -1,12 +1,13 @@
 import sbt._
 
 object Dependencies {
-  val akkaVersion = "2.5.19"
+  val akkaVersion = "2.6.13"
   val akkaHttpVersion = "10.1.7"
+  val akkaHttpJsonVersion = "1.36.0"
 
   val log4j2Version = "2.8.2"
   val scalaTestVersion = "3.0.3"
-  val servingGrpcScala = "2.4.0"
+  val servingGrpcScala = "3.0.0-dev3"
   val kafkaApiVersion = "2.2.0"
   val catsEffectVersion = "1.2.0"
   val fs2Version = "1.0.4"
@@ -20,8 +21,8 @@ object Dependencies {
   lazy val akkaHttpDependencies = Seq(
     "com.typesafe.akka" %% "akka-http-core" % akkaHttpVersion,
     "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
-    "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
-    "ch.megard" %% "akka-http-cors" % "0.3.4"
+    "de.heikoseeberger" %% "akka-http-circe" % akkaHttpJsonVersion,
+    "ch.megard" %% "akka-http-cors" % "1.1.1"
   )
 
   lazy val streamDeps = Seq(

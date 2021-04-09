@@ -8,7 +8,7 @@ import cats.implicits._
 import com.google.protobuf.empty.Empty
 import io.grpc.ManagedChannelBuilder
 import io.grpc.stub.StreamObserver
-import io.hydrosphere.serving.discovery.serving.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
+import io.hydrosphere.serving.proto.discovery.api.{ApplicationDiscoveryEvent, ServableDiscoveryEvent, ServingDiscoveryGrpc}
 import io.hydrosphere.serving.gateway.config.ApiGatewayConfig
 import io.hydrosphere.serving.gateway.discovery.application.DiscoveryWatcher._
 import io.hydrosphere.serving.gateway.persistence.application.ApplicationStorage
@@ -69,7 +69,7 @@ class DiscoveryWatcher[F[_]](
   }
 
   def handleServableEvent(ev: ServableDiscoveryEvent): Unit = {
-    log.debug(s"Servable stream update: $ev")
+    log.debug(s"Servable stream update: ${ev.toProtoString}")
     val converted = ev.added.map(s => StoredServable.parse(s))
     val (addedServables, parsingErrors) =
       converted.foldLeft((Chain.empty[StoredServable], Chain.empty[String])) {
@@ -83,7 +83,7 @@ class DiscoveryWatcher[F[_]](
       log.info(s"Received servable: $servable".slice(0, 512))
     }
     val removed = ev.removedIdx.toList
-      log.info(s"Removed servables: $removed")
+    log.info(s"Removed servables: $removed")
     val upd = for {
       _ <- servableStorage.add(addedServables.toList)
       _ <- servableStorage.remove(removed)
@@ -92,7 +92,7 @@ class DiscoveryWatcher[F[_]](
   }
 
   private def handleAppEvent(resp: ApplicationDiscoveryEvent): Unit = {
-    log.debug(s"Application stream update: $resp")
+    log.debug(s"Application stream update: ${resp.toProtoString}")
     val converted = resp.added.map(app => StoredApplication.parse(app))
     val (addedApplications, parsingErrors) =
       converted.foldLeft((Chain.empty[StoredApplication], Chain.empty[String]))({

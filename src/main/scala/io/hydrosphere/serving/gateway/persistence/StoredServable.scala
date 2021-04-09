@@ -1,6 +1,6 @@
 package io.hydrosphere.serving.gateway.persistence
 
-import io.hydrosphere.serving.manager.grpc.entities.Servable
+import io.hydrosphere.serving.proto.manager.entities.Servable
 
 case class StoredServable(
   name: String,

@@ -7,7 +7,7 @@ import io.hydrosphere.serving.gateway.Logging
 import io.hydrosphere.serving.gateway.execution.Types.PredictorCtor
 import io.hydrosphere.serving.gateway.execution.servable.{Predictor, ServableRequest, ServableResponse}
 import io.hydrosphere.serving.gateway.persistence.{StoredApplication, StoredStage}
-import io.hydrosphere.serving.monitoring.metadata.ApplicationInfo
+import io.hydrosphere.monitoring.proto.sonar.entities.ApplicationInfo
 
 object StagePredictor extends Logging {
   def withShadow[F[_]](
@@ -21,7 +21,7 @@ object StagePredictor extends Logging {
       downstream <- stage.servables.traverse { x =>
         for {
           predictor <- servableCtor(x)
-        } yield x -> Predictor.withShadow(x, predictor, shadow, Some(ApplicationInfo(app.id, stage.id)))
+        } yield x -> Predictor.withShadow(x, predictor, shadow, Some(ApplicationInfo(app.name, stage.id)))
       }
     } yield {
       new Predictor[F] {

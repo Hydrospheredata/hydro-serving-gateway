@@ -41,10 +41,8 @@ object Main extends IOApp with Logging {
       channelCtor = GrpcChannel.grpc[F]
       clientCtor = PredictionClient.forEc(ec, channelCtor, config.grpc.deadline, config.grpc.maxMessageSize)
 
-
-      reqStore <- Resource.liftF(MonitoringClient.mkReqStore(config.reqstore))
       monitoring = Monitoring.default(config.apiGateway, config.grpc.deadline, config.grpc.maxMessageSize)
-      shadow = MonitoringClient.make(monitoring, reqStore)
+      shadow = MonitoringClient.make(monitoring)
 
       rng <- Resource.liftF(RandomNumberGenerator.default)
       responseSelector = ResponseSelector.randomSelector(F, rng)

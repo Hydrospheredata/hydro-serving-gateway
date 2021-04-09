@@ -18,7 +18,6 @@ object ApplicationExecutor {
           lastData <- F.fromEither(data._1.data)
           req = ServableRequest(
             data = lastData,
-            replayTrace = None,
             requestId = data._2.requestId
           )
           res <- x.predict(req)
