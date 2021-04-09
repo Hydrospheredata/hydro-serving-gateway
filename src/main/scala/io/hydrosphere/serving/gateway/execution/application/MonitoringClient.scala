@@ -57,7 +57,7 @@ object MonitoringClient extends Logging {
         )
       val flow = for {
         _ <- Logging.debug(s"Monitoring response for ${response.servable} ${appInfo}")
-        execInfo = ExecutionInformation(wrappedRequest.some, wrappedResponseOrError, meta.some)
+        execInfo = ExecutionInformation(request = wrappedRequest.some, responseOrError = wrappedResponseOrError, metadata = meta.some)
         _ <- monitoring.send(execInfo)
       } yield meta
 
