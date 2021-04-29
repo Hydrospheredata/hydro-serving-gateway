@@ -10,5 +10,9 @@ jobs:
       uses: olafurpg/setup-scala@v10
       with:
         java-version: "adopt@1.8"
-    - name: Build and Test
-      run: sbt -DappVersion=latest docker
+    - name: Test
+      run: sbt test
+    - name: Build docker image
+      run: sbt -DappVersion=actions docker
+    - name: Publish docker image
+      uses: docker://hydrosphere/serving-gateway:actions
