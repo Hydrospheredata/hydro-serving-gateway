@@ -24,11 +24,24 @@ jobs:
         java-version: "adopt@1.8"
     - name: Build image
       run: sbt -DappVersion=actions docker
-    - name: Push docker image
-      if: success()
-      uses: manusa/actions-publish-docker@v1.1.2
+
+    # - name: Push docker image
+    #   if: success()
+    #   uses: manusa/actions-publish-docker@v1.1.2
+    #   with:
+    #     name: hydrosphere/serving-gateway
+    #     tag: actions
+    #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+    #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Release
+      uses: brpaz/action-semantic-release@v1
       with:
-        name: hydrosphere/serving-gateway
-        tag: actions
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+          dry_run: "true"
+          install_plugins: "semantic-release-docker release-notes-generator github"
+          branch: master
+      run: |
+        release-notes-generator generateNotes
+        github publish
+        semantic-release-docker publish
+
+ 
