@@ -39,9 +39,8 @@ jobs:
           dry_run: "true"
           install_plugins: "semantic-release-docker release-notes-generator github"
           branch: master
-      run: |
-        release-notes-generator generateNotes
-        github publish
-        semantic-release-docker publish
+          release-notes-generator: generateNotes
+          github: publish
+          semantic-release-docker: publish
 
  
