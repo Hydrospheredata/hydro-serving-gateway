@@ -164,8 +164,8 @@ def updateDockerCompose(String newVersion){
 def updateHelmChart(String newVersion){
   dir('helm'){
     //Change template
-    sh script: "sed -i \"s/.*full:.*/  full: ${REGISTRYURL}\\/${${SERVICEIMAGENAME}}:$newVersion/g\" ${HELMCHARTNAME}/values.yaml", label: "sed ${HELMCHARTNAME} version"
-    sh script: "sed -i \"s/.*${${SERVICEIMAGENAME}}.*/    full: ${REGISTRYURL}\\/${${SERVICEIMAGENAME}}:$newVersion/g\" dev.yaml", label: "sed ${HELMCHARTNAME} dev stage version"
+    sh script: "sed -i \"s/.*full:.*/  full: ${REGISTRYURL}\\/${SERVICEIMAGENAME}:$newVersion/g\" ${HELMCHARTNAME}/values.yaml", label: "sed ${HELMCHARTNAME} version"
+    sh script: "sed -i \"s/.*${SERVICEIMAGENAME}.*/    full: ${REGISTRYURL}\\/${SERVICEIMAGENAME}:$newVersion/g\" dev.yaml", label: "sed ${HELMCHARTNAME} dev stage version"
 
     //Refresh readme for chart
     sh script: "frigate gen ${HELMCHARTNAME} --no-credits > ${HELMCHARTNAME}/README.md"
@@ -242,15 +242,19 @@ node('hydrocentral') {
                 pushDocker(REGISTRYURL, SERVICEIMAGENAME+":latest")
                 //Update helm and docker-compose if release 
                 if (params.releaseType == 'global'){
+                    sh script: "echo Start ${params.releaseType} release"
                     releaseService(oldVersion, newVersion)
                 } else {
                     dir('release'){
+                        sh script: "echo Start ${params.releaseType} release"
                         //bump only image tag
                         withCredentials([usernamePassword(credentialsId: 'HydroRobot_AccessToken', passwordVariable: 'Githubpassword', usernameVariable: 'Githubusername')]) {
-                            git changelog: false, credentialsId: 'HydroRobot_AccessToken', url: "https://$Githubusername:$Githubpassword@github.com/Hydrospheredata/hydro-serving.git"      
+                            git changelog: false, credentialsId: 'HydroRobot_AccessToken', url: "https://$Githubusername:$Githubpassword@github.com/Hydrospheredata/hydro-serving.git"
+                            sh script: "echo Update Helm and Compose"      
                             updateHelmChart("$newVersion")
                             updateDockerCompose("$newVersion")
-                            sh script: "git commit --allow-empty -a -m 'Releasing $SERVICENAME:$newVersion'",label: "commit to git chart repo"
+                            sh script: "echo Commit changes to hydro-serving repo"
+                            sh script: "git commit --allow-empty -a -m 'Releasing ${SERVICENAME}:$newVersion'",label: "commit to git chart repo"
                             sh script: "git push https://$Githubusername:$Githubpassword@github.com/Hydrospheredata/hydro-serving.git --set-upstream master",label: "push to git"
                         }
                     }
