@@ -1,7 +1,0 @@
-name: ci
-on: [pull_request]
-jobs:
-  Test:
-    runs_on: ubuntu-latest
-    steps:
-      - run: "echo 123"
