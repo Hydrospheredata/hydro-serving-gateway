@@ -19,17 +19,19 @@ jobs:
             ~/.ivy2/cache
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+      - name: Debug
+        run: "echo ${{ steps.restore-cache.ouputs }}"
       
       - name: Setup scala
-        if: steps.restore-cache.ouputs.cache-hit != true
+        if: steps.restore-cache.ouputs.cache-hit != 'true'
         uses: olafurpg/setup-scala@v10
           
       - name: Initialize project
-        if: steps.restore-cache.outputs.cache-hit != true
+        if: steps.restore-cache.outputs.cache-hit != 'true'
         run: "sbt initialize"
         
       - name: Store new cache
-        if: steps.restore-cache.outputs.cache-hit != true
+        if: steps.restore-cache.outputs.cache-hit != 'true'
         uses: actions/cache@v2.1.5
         with:
           path: |
