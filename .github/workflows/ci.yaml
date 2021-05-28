@@ -1,7 +1,16 @@
 name: ci
 on:
-  [pull_request]
+  push:
+    branches:
+      - master  
+  pull_request:
+    
 jobs:
+  Debug:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo ${{ github.event_name }}'
+      
   Setup:
     runs-on: ubuntu-latest
     steps:
@@ -68,6 +77,7 @@ jobs:
       
   
   Build:
+    if: github.event_name == 'push'
     needs: [Test, Static_analysis]
     runs-on: ubuntu-latest
     steps:
