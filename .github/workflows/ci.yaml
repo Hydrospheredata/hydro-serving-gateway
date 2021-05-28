@@ -6,32 +6,30 @@ on:
   pull_request:
     
 jobs:
-  Debug:
-    runs-on: ubuntu-latest
-    steps:
-      - run: 'echo ${{ github.event_name }}'
-      
   Setup:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Setup scala
-        uses: olafurpg/setup-scala@v10
       - name: Restore cache
+        id: restore-cache
         uses: actions/cache@v2.1.5
         with:
           path: |
             ~/.ivy2/cache
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+      
+      - name: Setup scala
+        if: steps.restore-cache.ouputs.cache-hit != true
+        uses: olafurpg/setup-scala@v10
           
       - name: Initialize project
-        if: steps.restore-cache.outputs.cache-hit != 'true'
+        if: steps.restore-cache.outputs.cache-hit != true
         run: "sbt initialize"
         
       - name: Store new cache
-        if: steps.restore-cache.outputs.cache-hit != 'true'
+        if: steps.restore-cache.outputs.cache-hit != true
         uses: actions/cache@v2.1.5
         with:
           path: |
