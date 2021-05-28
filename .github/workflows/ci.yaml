@@ -6,6 +6,12 @@ on:
   pull_request:
     
 jobs:
+  Debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check ref output
+        run: echo ${{ github.ref }}
+        
   Setup:
     runs-on: ubuntu-latest
     steps:
@@ -19,8 +25,6 @@ jobs:
             ~/.ivy2/cache
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
-      - name: Debug
-        run: "echo ${{ steps.restore-cache.ouputs }}"
       
       - name: Setup scala
         if: steps.restore-cache.ouputs.cache-hit != 'true'
