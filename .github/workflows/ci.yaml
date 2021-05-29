@@ -27,7 +27,7 @@ jobs:
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
       
       - name: Setup scala
-        if: steps.restore-cache.ouputs.cache-hit != 'true'
+        if: steps.restore-cache.outputs.cache-hit != 'true'
         uses: olafurpg/setup-scala@v10
           
       - name: Initialize project
