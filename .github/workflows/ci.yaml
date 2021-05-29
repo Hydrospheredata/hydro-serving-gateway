@@ -49,8 +49,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        
       - name: Setup scala
         uses: olafurpg/setup-scala@v10
+        
       - name: Restore cache
         uses: actions/cache@v2.1.5
         with:
@@ -58,6 +60,7 @@ jobs:
             ~/.ivy2/cache
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+          
       - name: Run tests
         run: "sbt test"
         
@@ -68,6 +71,7 @@ jobs:
         with:
         # Disabling shallow clone is recommended for improving relevancy of reporting
           fetch-depth: 0
+          
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v1.6
         with:
@@ -80,15 +84,17 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       
   
-  Build:
+  Build_and_publish:
     if: github.event_name == 'push'
     needs: [Test, Static_analysis]
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+      
     - name: Setup scala
       uses: olafurpg/setup-scala@v10
+      
     - name: Restore cache
       uses: actions/cache@v2.1.5
       with:
@@ -96,5 +102,18 @@ jobs:
           ~/.ivy2/cache
           ~/.sbt
         key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+        
     - name: Build image
-      run: "sbt -DappVersion=actions docker"      
+      run: "sbt -DappVersion=${{ github.sha }} docker"
+      
+    - name: Docker Login
+      uses: docker/login-action@v1.9.0
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      
+    - name: Retag image
+      run: "docker tag hydrosphere/serving-gateway:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
+      
+    - name: Push image
+      run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
