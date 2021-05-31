@@ -1,0 +1,72 @@
+name: cd
+on:
+  push:
+    branches:
+      - master
+      
+  workflow_dispatch:
+
+jobs:
+  Build_and_publish:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Setup scala
+      uses: olafurpg/setup-scala@v10
+      
+    - name: Restore cache
+      uses: actions/cache@v2.1.5
+      with:
+        path: |
+          ~/.ivy2/cache
+          ~/.sbt
+        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+        
+    - name: Build image
+      run: "sbt -DappVersion=${{ github.sha }} docker"
+      
+    - name: Docker Login
+      uses: docker/login-action@v1.9.0
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      
+    - name: Retag image
+      run: "docker tag hydrosphere/serving-gateway:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
+      
+    - name: Push image
+      run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
+      
+    - name: Upload docker image artifact
+      uses: ishworkh/docker-image-artifact-upload@v1
+      with:
+        image: "hydrosphere/serving-gateway:${{ github.sha }}"
+      
+  Release:
+    needs: [Build_and_publish]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+        
+      - name: Create bumpversion config
+        run: |
+          cat <<EOF> .bumpversion.cfg
+          [bumpversion]
+          current_version = 0.0.0
+          commit = False
+          tag = False
+          parse = (?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)
+          serialize =
+              {major}.{minor}.{patch}
+          EOF
+      - name: Bump version
+        uses: jaumann/github-bumpversion-action@v0.0.6
+   
+   
