@@ -55,18 +55,7 @@ jobs:
         with:
           fetch-depth: 0
         
-      - name: Create bumpversion config
-        run: |
-          cat <<EOF> .bumpversion.cfg
-          [bumpversion]
-          current_version = 0.0.0
-          commit = False
-          tag = False
-          parse = (?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)
-          serialize =
-              {major}.{minor}.{patch}
-          EOF
       - name: Bump version
-        uses: jaumann/github-bumpversion-action@v0.0.6
+        uses: codacy/git-version@2.4.0
    
    
