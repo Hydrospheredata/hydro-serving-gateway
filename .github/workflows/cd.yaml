@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - github-actions
       
   workflow_dispatch:
 
@@ -12,6 +13,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+      
+    - name: Debug
+      run: "echo ${{github.ref}}"
       
     - name: Setup scala
       uses: olafurpg/setup-scala@v10
@@ -55,18 +59,10 @@ jobs:
         with:
           fetch-depth: 0
         
-      - name: Create bumpversion config
-        run: |
-          cat <<EOF> .bumpversion.cfg
-          [bumpversion]
-          current_version = 0.0.0
-          commit = False
-          tag = False
-          parse = (?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)
-          serialize =
-              {major}.{minor}.{patch}
-          EOF
       - name: Bump version
-        uses: jaumann/github-bumpversion-action@v0.0.6
+        uses: codacy/git-version@2.4.0
+        
+      - name: Debug
+        run: 'git log -n 5'
    
    
