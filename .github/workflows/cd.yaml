@@ -3,10 +3,6 @@ on:
   push:
     branches:
       - master
-      - github-actions
-    
-    tags:
-      - v*
       
   workflow_dispatch:
 
@@ -66,6 +62,17 @@ jobs:
         id: bump
         uses: codacy/git-version@2.4.0
         
+      - name: Docker Image Artifact Download
+        uses: ishworkh/docker-image-artifact-download@v1
+        with:
+          image: "hydrosphere/serving-gateway:${{ github.sha }}"
+          
+      - name: Retag image
+        run: "docker tag hydrosphere/serving-gateway:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:v${{ steps.bump.outputs.version }}"
+      
+      - name: Push image
+        run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:v${{ steps.bump.outputs.version }}"
+          
       - name: Tag commit
         run: "git tag v${{steps.bump.outputs.version}}"
         
