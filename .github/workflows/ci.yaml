@@ -126,6 +126,7 @@ jobs:
         image: "hydrosphere/serving-gateway:${{ github.sha }}"
       
   Release:
+    needs: [Build_and_publish]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     
