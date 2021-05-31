@@ -4,6 +4,9 @@ on:
     branches:
       - master
       - github-actions
+    
+    tags:
+      - v*
       
   workflow_dispatch:
 
