@@ -60,9 +60,14 @@ jobs:
           fetch-depth: 0
         
       - name: Bump version
+        id: bump
         uses: codacy/git-version@2.4.0
         
-      - name: Debug
-        run: 'git log -n 5'
+      - name: Tag commit
+        run: "git tag v${{steps.bump.outputs.version}}"
+        
+      - name: Push tag
+        run: "git push"
+        
    
    
