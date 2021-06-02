@@ -5,7 +5,7 @@
             "severity": "warning",
             "pattern": [
                 {
-                    "regexp": "^.*\\[.*(info|warn|error).*\\]\\s.*([A-Z].*[\\w\\.]).\\[0m$",
+                    "regexp": "^.*\\[.*(info|warn|error).*\\]\\s.*([A-Z].*[\\w\\.])....$",
                     "severity": 1,
                     "message": 2
                 }
