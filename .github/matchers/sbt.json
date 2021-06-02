@@ -2,6 +2,7 @@
     "problemMatcher": [
         {
             "owner": "sbt",
+            "severity": "warn"
             "pattern": [
                 {
                     "regexp": "^\\[(info|warn|error)\\]\\s(.+)$",
