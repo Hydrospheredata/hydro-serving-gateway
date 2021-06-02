@@ -57,7 +57,7 @@ jobs:
         run: echo "::add-matcher::.github/matchers/sbt.json"
         
       - name: Run tests
-        run: sbt --no-colors test
+        run: "sbt test --no-colors"
         
   Build_image:
     runs-on: ubuntu-latest
