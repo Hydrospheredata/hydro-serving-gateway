@@ -1,0 +1,15 @@
+{
+    "problemMatcher": [
+        {
+            "owner": "sbt"
+            "pattern": [
+                {
+                    "regexp": "^[(.+)]\\s(.+)$",
+                    "severity": 1,
+                    "message": 2
+                }
+            ]
+        }
+    ]
+}
+        
