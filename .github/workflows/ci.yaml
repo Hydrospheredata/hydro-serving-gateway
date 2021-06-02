@@ -56,6 +56,8 @@ jobs:
             ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt', '**/Dependencies.scala') }}
           
+      - name: Setup problem matcher
+        run: echo "::add-matcher::.github/matchers/sbt.json"
       - name: Run tests
         run: "sbt test"
         
