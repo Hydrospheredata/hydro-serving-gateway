@@ -6,6 +6,10 @@ on:
       
   workflow_dispatch:
 
+env:
+  HYDRO_SERVING_REPO: BulbaWarrior/hydro-serving
+  IMAGE: serving_gateway
+  
 jobs:
   Build_and_publish:
     runs-on: ubuntu-latest
@@ -39,15 +43,23 @@ jobs:
         password: ${{ secrets.DOCKERHUB_PASSWORD }}
       
     - name: Retag image
-      run: "docker tag hydrosphere/serving-gateway:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
+      run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:${{ github.sha }}"
       
     - name: Push image
-      run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:${{ github.sha }}"
+      run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:${{ github.sha }}"
       
     - name: Upload docker image artifact
       uses: ishworkh/docker-image-artifact-upload@v1
       with:
-        image: "hydrosphere/serving-gateway:${{ github.sha }}"
+        image: "hydrosphere/${{ env.IMAGE }}:${{ github.sha }}"
+        
+    - name: Update image version in hydro-serving repo
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+        workflow: local-release.yaml
+        token: ${{ secrets.HYDRO_SERVING_TOKEN }}
+        repo: ${{ env.HYDRO_SERVING_REPO }}
+        inputs: "{'service_image_name':'${{ env.IMAGE }}', 'registry_url':'${{ secrets.DOCKERHUB_USERNAME }}', 'tag':'${{ github.sha }}'}"
       
   Release:
     needs: [Build_and_publish]
@@ -67,7 +79,7 @@ jobs:
       - name: Docker Image Artifact Download
         uses: ishworkh/docker-image-artifact-download@v1
         with:
-          image: "hydrosphere/serving-gateway:${{ github.sha }}"
+          image: "hydrosphere/${{ env.IMAGE }}:${{ github.sha }}"
           
       - name: Docker Login
         uses: docker/login-action@v1.9.0
@@ -76,16 +88,17 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
           
       - name: Retag image
-        run: "docker tag hydrosphere/serving-gateway:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:v${{ steps.bump.outputs.version }}"
+        run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ steps.bump.outputs.version }}"
       
       - name: Push image
-        run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/serving-gateway:v${{ steps.bump.outputs.version }}"
+        run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ steps.bump.outputs.version }}"
           
       - name: Tag commit
         run: "git tag v${{steps.bump.outputs.version}}"
         
       - name: Push tag
         run: "git push --tags"
+        # TODO: update grpc version
         
    
    
