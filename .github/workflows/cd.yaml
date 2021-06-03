@@ -8,7 +8,7 @@ on:
 
 env:
   HYDRO_SERVING_REPO: BulbaWarrior/hydro-serving
-  IMAGE: serving_gateway
+  IMAGE: serving-gateway
   
 jobs:
   Build_and_publish:
