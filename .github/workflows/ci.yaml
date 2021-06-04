@@ -2,11 +2,6 @@ name: ci
 on: pull_request
  
 jobs:
-  Debug:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check ref output
-        run: echo ${{ github.ref }}
         
   Setup:
     runs-on: ubuntu-latest
