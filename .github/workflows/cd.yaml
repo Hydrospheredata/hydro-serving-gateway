@@ -56,7 +56,7 @@ jobs:
     - name: Update image version in hydro-serving repo
       uses: benc-uk/workflow-dispatch@v1
       with:
-        workflow: Local release
+        workflow: "Local release"
         token: ${{ secrets.HYDRO_SERVING_TOKEN }}
         repo: ${{ env.HYDRO_SERVING_REPO }}
         inputs: '{"service_image_name":"${{ env.IMAGE }}", "registry_url":"${{ secrets.DOCKERHUB_USERNAME }}", "tag":"${{ github.sha }}"}'
