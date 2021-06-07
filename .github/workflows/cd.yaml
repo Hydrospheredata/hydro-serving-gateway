@@ -54,6 +54,7 @@ jobs:
         image: "hydrosphere/${{ env.IMAGE }}:${{ github.sha }}"
         
     - name: Update image version in hydro-serving repo
+      if: github.event_name == 'push'
       uses: benc-uk/workflow-dispatch@v1
       with:
         workflow: "Local release"
