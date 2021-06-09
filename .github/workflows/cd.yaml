@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  HYDRO_SERVING_REPO: BulbaWarrior/hydro-serving
-  IMAGE: serving-gateway
+  HYDRO_SERVING_REPO: ${{ secrets.HYDRO_SERVING_REPO }}
+  IMAGE: ${{ secrets.IMAGE_NAME }}
   
 jobs:
   Build_and_publish:
@@ -16,9 +16,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
-      
-    - name: Debug
-      run: "echo ${{github.ref}}"
       
     - name: Setup scala
       uses: olafurpg/setup-scala@v10
