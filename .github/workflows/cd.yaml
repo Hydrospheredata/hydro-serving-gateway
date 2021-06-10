@@ -52,7 +52,7 @@ jobs:
         
     - name: Update image version in hydro-serving repo
       if: github.event_name == 'push'
-      uses: benc-uk/workflow-dispatch@v1
+      uses: aurelien-baudet/workflow-dispatch@v2.1.1
       with:
         workflow: "Local release"
         token: ${{ secrets.HYDRO_SERVING_TOKEN }}
