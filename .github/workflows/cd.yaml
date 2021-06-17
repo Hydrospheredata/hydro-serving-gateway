@@ -91,7 +91,7 @@ jobs:
         
       - name: Set VERSION variable
         if: event.inputs.version != ''
-        run: echo VERSION=${{ events.inputs.version }} >> $GITHUB_ENV
+        run: echo VERSION=${{ event.inputs.version }} >> $GITHUB_ENV
         
       - name: Docker Image Artifact Download
         uses: ishworkh/docker-image-artifact-download@v1
