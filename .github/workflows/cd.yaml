@@ -9,6 +9,7 @@ on:
     inputs:
       version:
         description: release version, ommit for patch
+        default: ''
 
 # Secrets:
 #   DOCKERHUB_USERNAME - also used as the dockerhub repository url
@@ -81,17 +82,17 @@ jobs:
           fetch-depth: 0
         
       - name: Bump version
-        if: event.inputs.version == ''
+        if: github.event.inputs.version == ''
         id: bump
         uses: codacy/git-version@2.4.0
         
       - name: Set VERSION variable
-        if: event.inputs.version == ''
+        if: github.event.inputs.version == ''
         run: echo VERSION=${{ steps.bump.outputs.version }} >> $GITHUB_ENV
         
       - name: Set VERSION variable
-        if: event.inputs.version != ''
-        run: echo VERSION=${{ event.inputs.version }} >> $GITHUB_ENV
+        if: github.event.inputs.version != ''
+        run: echo VERSION=${{ github.event.inputs.version }} >> $GITHUB_ENV
         
       - name: Docker Image Artifact Download
         uses: ishworkh/docker-image-artifact-download@v1
@@ -127,6 +128,4 @@ jobs:
       - run: |
           echo "release status: ${{  steps.check.outputs.status  }}"
         
-        
-   
-   
+      
