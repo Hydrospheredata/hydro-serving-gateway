@@ -3,12 +3,21 @@ on:
   push:
     branches:
       - master
+      - main
       
   workflow_dispatch:
+    inputs:
+      version:
+        description: release version, ommit for patch
+
+# Secrets:
+#   DOCKERHUB_USERNAME - also used as the dockerhub repository url
+#   DOCKERHUB_PASSWORD
+#   HYDRO_SERVING_TOKEN - github token with write access to hydro-serving repo
 
 env:
-  HYDRO_SERVING_REPO: ${{ secrets.HYDRO_SERVING_REPO }}
-  IMAGE: ${{ secrets.IMAGE_NAME }}
+  HYDRO_SERVING_REPO: BulbaWarrior/hydro-serving
+  IMAGE: serving-gateway # name of the built image
   
 jobs:
   Build_and_publish:
@@ -40,6 +49,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_PASSWORD }}
       
     - name: Retag image
+      # the step is necessary to be able to push image to any repo, not just hydrosphere
       run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:${{ github.sha }}"
       
     - name: Push image
@@ -71,8 +81,17 @@ jobs:
           fetch-depth: 0
         
       - name: Bump version
+        if: event.inputs.version == ''
         id: bump
         uses: codacy/git-version@2.4.0
+        
+      - name: Set VERSION variable
+        if: event.inputs.version == ''
+        run: echo VERSION=${{ steps.bump.outputs.version }} >> $GITHUB_ENV
+        
+      - name: Set VERSION variable
+        if: event.inputs.version != ''
+        run: echo VERSION=${{ events.inputs.version }} >> $GITHUB_ENV
         
       - name: Docker Image Artifact Download
         uses: ishworkh/docker-image-artifact-download@v1
@@ -86,13 +105,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
           
       - name: Retag image
-        run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ steps.bump.outputs.version }}"
+        run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ env.VERSION }}"
       
       - name: Push image
-        run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ steps.bump.outputs.version }}"
+        run: "docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE }}:v${{ env.VERSION }}"
           
       - name: Tag commit
-        run: "git tag v${{steps.bump.outputs.version}}"
+        run: "git tag v${{ env.VERSION }}"
         
       - name: Push tag
         run: "git push --tags"
