@@ -62,7 +62,7 @@ trait GenericController extends Logging with Directives {
       case Right(tensors) =>
         F.delay(GatewayPredictRequest(
           name = name,
-          data = tensors.mapValues(_.toProto)
+          data = tensors.view.mapValues(_.toProto).toMap
         ))
     }
   }
