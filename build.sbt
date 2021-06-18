@@ -17,13 +17,12 @@ logBuffered in Test := false  // http://www.scalatest.org/user_guide/using_scala
 publishArtifact := false
 exportJars := false
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.13.2"
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
 scalacOptions ++= Seq(
   "-unchecked",
   "-deprecation",
   "-feature",
-  "-Ypartial-unification",
   "-language:existentials",
   "-language:higherKinds",
   "-language:implicitConversions",
@@ -67,4 +66,4 @@ imageNames in docker := Seq(
 enablePlugins(BuildInfoPlugin)
 buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion, git.gitCurrentBranch, git.gitCurrentTags, git.gitHeadCommit)
 buildInfoPackage := "io.hydrosphere.serving.gateway"
-buildInfoOptions += BuildInfoOption.ToJson 
+buildInfoOptions += BuildInfoOption.ToJson

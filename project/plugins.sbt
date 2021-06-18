@@ -7,6 +7,6 @@ addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.5.0")
 
 
 libraryDependencies ++= Seq(
-  "com.thesamet.scalapb" %% "compilerplugin" % "0.8.4",
+  "com.thesamet.scalapb" %% "compilerplugin" % "0.11.3",
   "com.spotify" % "docker-client" % "8.9.0"
 )

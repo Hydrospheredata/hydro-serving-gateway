@@ -1,16 +1,16 @@
 import sbt._
 
 object Dependencies {
-  val akkaVersion = "2.6.13"
-  val akkaHttpVersion = "10.1.7"
+  val akkaVersion = "2.6.9"
+  val akkaHttpVersion = "10.2.0"
   val akkaHttpJsonVersion = "1.36.0"
 
-  val log4j2Version = "2.8.2"
-  val scalaTestVersion = "3.0.3"
+  val log4j2Version = "2.13.3"
+  val scalaTestVersion = "3.2.2"
   val servingGrpcScala = "3.0.0-dev3"
-  val kafkaApiVersion = "2.2.0"
-  val catsEffectVersion = "1.2.0"
-  val fs2Version = "1.0.4"
+  val kafkaApiVersion = "2.8.0"
+  val catsEffectVersion = "2.2.0"
+  val fs2Version = "2.4.4"
   
   lazy val akkaDependencies = Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -31,14 +31,12 @@ object Dependencies {
 
   lazy val grpcDependencies = Seq(
     "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-    "io.hydrosphere" %% "serving-grpc-scala" % servingGrpcScala,
-    "io.grpc" % "grpc-netty" % scalapb.compiler.Version.grpcJavaVersion,
-  ).map(m => m.exclude("com.google.api.grpc", "googleapis-common-protos"))
+    "io.hydrosphere" %% "serving-grpc-scala" % servingGrpcScala)
 
   lazy val kafkaDeps = Seq(
     "org.apache.kafka" %% "kafka" % kafkaApiVersion,
     "org.apache.kafka" % "kafka-clients" % kafkaApiVersion % Test,
-    "org.apache.kafka" %% "kafka-streams-scala" % kafkaApiVersion,
+    "org.apache.kafka" %% "kafka-streams-scala" % kafkaApiVersion
   )
 
   lazy val testDependencies = Seq(
@@ -52,7 +50,7 @@ object Dependencies {
     "org.apache.logging.log4j" % "log4j-api" % log4j2Version,
     "org.apache.logging.log4j" % "log4j-core" % log4j2Version,
     "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4j2Version,
-    "org.apache.logging.log4j" %% "log4j-api-scala" % "11.0"
+    "org.apache.logging.log4j" %% "log4j-api-scala" % "12.0"
   )
 
   lazy val all = logDependencies ++
@@ -64,6 +62,6 @@ object Dependencies {
     kafkaDeps ++
     Seq(
       "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "com.github.pureconfig" %% "pureconfig" % "0.9.1"
+      "com.github.pureconfig" %% "pureconfig" % "0.14.0"
     )
 }

@@ -13,10 +13,11 @@ import io.hydrosphere.serving.proto.contract.tensor.definitions.Shape
 import io.hydrosphere.serving.proto.runtime.api.{PredictRequest, PredictResponse}
 import io.hydrosphere.serving.proto.contract.tensor.definitions.StringTensor
 import io.hydrosphere.serving.proto.contract.types.DataType
-import org.scalatest.{FunSpec, Matchers}
+import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.matchers.should.Matchers
 
 
-class ShadowSpec extends FunSpec with Matchers {
+class ShadowSpec extends AnyFunSpec with Matchers {
   implicit val clock = Clock.create[IO]
   it("monitoring shouldn't affect prediction") {
     val contract = ModelSignature(
