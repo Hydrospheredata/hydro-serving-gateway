@@ -17,7 +17,7 @@ on:
 #   HYDRO_SERVING_TOKEN - github token with write access to hydro-serving repo
 
 env:
-  HYDRO_SERVING_REPO: Hydrospheredata/hydro-serving
+  HYDRO_SERVING_REPO: BulbaWarrior/hydro-serving
   IMAGE: serving-gateway # name of the built image
   
 jobs:
