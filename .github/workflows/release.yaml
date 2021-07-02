@@ -1,0 +1,177 @@
+name: release
+on:
+  push:
+    branches:
+      - master
+      - main
+      
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: bump rule (major|feature|bug|rc)
+        default: bug
+        required: false
+
+      version:
+        description: release version, ommit for patch
+        default: ''
+        required: false
+
+      grpc_version:
+        description: grpc version, ommit for patch
+        default: ''
+        required: false
+
+      release:
+        description: release type (local|global)
+        default: local
+        required: false 
+
+# Secrets:
+#   DOCKERHUB_USERNAME - also used as the dockerhub repository url
+#   DOCKERHUB_PASSWORD
+#   HYDRO_SERVING_TOKEN - github token with write access to hydro-serving repo
+
+env:
+  HYDRO_SERVING_REPO: ${{ github.repository_owner }}/hydro-serving
+  IMAGE: serving-gateway # name of the built image
+  REGISTRY: hydrosphere
+  
+jobs:
+  Verify_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Get latest tag
+        id: get-latest-tag
+        uses: actions-ecosystem/action-get-latest-tag@v1
+        
+    
+    outputs:
+      latest_version: ${{ steps.get-latest-tag.outputs.tag }}
+      
+  Build_and_publish: # Use for merge release, build and push image and set tag, update helm and compose. Depends on release type
+    needs: Verify_version
+    if: >
+      needs.Verify_version.outputs.latest_version != github.event.inputs.version && (
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'push')
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Setup scala
+      uses: olafurpg/setup-scala@v10
+      with:
+        java-version: adopt@1.11
+      
+    - name: Restore cache
+      uses: actions/cache@v2.1.5
+      with:
+        path: |
+          ~/.ivy2/cache
+          ~/.sbt
+        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt', '**/Dependencies.scala') }}
+
+    - name: Initialize project
+      if: steps.restore-cache.outputs.cache-hit != 'true'
+      run: "sbt initialize"
+
+    # Bump service version  
+    - name: Get latest tag
+      id: get-latest-tag
+      uses: actions-ecosystem/action-get-latest-tag@v1
+
+    - name: Bump release version
+      id: bump_version
+      uses: christian-draeger/increment-semantic-version@1.0.2
+      with:
+        current-version: ${{ steps.get-latest-tag.outputs.tag }}
+        version-fragment: ${{ github.event.inputs.bump }}
+
+    - name: Set VERSION variable
+      if: github.event.inputs.version == '' && github.event_name == 'workflow_dispatch'
+      run: echo VERSION=${{ steps.bump_version.outputs.next-version }} >> $GITHUB_ENV
+      
+    - name: Set VERSION variable
+      if: github.event.inputs.version != '' && github.event_name == 'workflow_dispatch'
+      run: echo VERSION=${{ github.event.inputs.version }} >> $GITHUB_ENV
+
+    - name: Set VERSION variable
+      if: github.event_name == 'push'
+      run: echo VERSION=${{ github.sha }} >> $GITHUB_ENV
+
+    # Bump dependencies
+    - name: Bump grpc
+      if: github.event.inputs.grpc_version == ''
+      run: echo GRPC_VERSION=$(curl -s https://search.maven.org/solrsearch/select\?q\=g:%22io.hydrosphere%22+AND+a:%22serving-grpc-scala_2.13%22\&core\=gav\&rows\=1\&wt\=json | jq -r '.response.docs[].v') >> $GITHUB_ENV
+
+    - name: Set grpc from inputs
+      if: github.event.inputs.grpc_version != ''
+      run: echo GRPC_VERSION=${{ github.event.inputs.grpc_version }} >> $GITHUB_ENV
+
+    - name: Find and Replace dependency
+      uses: jacobtomlinson/gha-find-replace@master
+      with:
+        find: "val servingGrpcScala.*"
+        replace: "val servingGrpcScala  = \"${{ env.GRPC_VERSION }}\""
+        include: "Dependencies.scala"
+
+    # Build docker image
+    - name: Docker Login
+      uses: docker/login-action@v1.9.0
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+    - name: Build image
+      run: "sbt -DappVersion=${{ env.VERSION }} docker"
+
+    ## Personal - remove after complete or not
+    - name: Retag image
+      run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ env.VERSION }} ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}"
+
+    - name: Push image
+      run: "docker push ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}"
+
+      # Commit changes
+    - name: Commit new version
+      if: github.event_name == 'workflow_dispatch'
+      run: "echo ${{ env.VERSION }} > version"
+
+    - name: Push to repo
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git commit -m "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}" -a --allow-empty
+        git push
+          
+    - name: Tag commit
+      if: github.event_name == 'workflow_dispatch'
+      run: "git tag ${{ env.VERSION }}"
+      
+    - name: Push tag
+      if: github.event_name == 'workflow_dispatch'
+      run: "git push --tags"
+
+    # Update docker compose and helm only for merge-request 
+    - name: Update image version in hydro-serving repo
+      uses: aurelien-baudet/workflow-dispatch@v2.1.1
+      if: github.event_name == 'push'
+      with:
+        workflow: Local release
+        token: ${{ secrets.HYDRO_SERVING_TOKEN }}
+        repo: ${{ env.HYDRO_SERVING_REPO }}
+        inputs: '{"service_image_name":"${{ env.IMAGE }}", "registry_url":"${{ env.REGISTRY }}", "tag":"${{ env.VERSION }}"}'
+
+    # Set build status TODO  
+    - uses: martialonline/workflow-status@v2
+      id: check
+    - run: |
+        echo "release status: ${{  steps.check.outputs.status  }}"
+        echo "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}"
