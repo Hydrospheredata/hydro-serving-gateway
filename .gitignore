@@ -73,4 +73,6 @@ project/plugins/project/
 .bloop
 .metals
 .vscode
+.bsp/
+.DS_Store
 
