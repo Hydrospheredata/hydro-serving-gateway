@@ -4,6 +4,9 @@ import Keys._
 name := "serving-gateway"
 version := sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
 
+githubOwner := "Hydrospheredata"
+githubRepository := "hydro-serving-protos"
+
 organization := "io.hydrosphere.serving"
 organizationName := "hydrosphere"
 organizationHomepage := Some(url("https://hydrosphere.io"))
@@ -30,6 +33,7 @@ scalacOptions ++= Seq(
 )
 mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
 
+externalResolvers += "Hydrosphere packages" at "https://maven.pkg.github.com/Hydrospheredata/hydro-serving-protos"
 resolvers += Resolver.bintrayRepo("findify", "maven")
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 

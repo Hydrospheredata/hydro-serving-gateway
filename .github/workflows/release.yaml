@@ -36,6 +36,7 @@ env:
   HYDRO_SERVING_REPO: Hydrospheredata/hydro-serving
   IMAGE: serving-gateway # name of the built image
   REGISTRY: hydrosphere
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
 jobs:
   Build_and_publish: # Use for merge release, build and push image and set tag, update helm and compose. Depends on release type
@@ -114,6 +115,7 @@ jobs:
 
     - name: Build image
       run: "sbt -DappVersion=${{ env.VERSION }} docker"
+
 
     ## Personal - remove after complete or not
     - name: Retag image
