@@ -58,6 +58,9 @@ jobs:
         run: "sbt test"
         
   Build_image:
+    outputs:
+      release: ${{ env.VERSION }}
+      dependency: ${{ env.GRPC_VERSION }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
