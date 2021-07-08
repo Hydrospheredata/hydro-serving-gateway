@@ -40,6 +40,10 @@ env:
   
 jobs:
   Build_and_publish: # Use for merge release, build and push image and set tag, update helm and compose. Depends on release type
+    outputs:
+      status: ${{  steps.check.outputs.status  }}
+      release: ${{ env.IMAGE }}:${{ env.VERSION }}
+      dependency: ${{ env.GRPC_VERSION }}
     if: |
      github.event_name == 'workflow_dispatch' || 
      github.event_name == 'push'
@@ -155,9 +159,10 @@ jobs:
         repo: ${{ env.HYDRO_SERVING_REPO }}
         inputs: '{"service_image_name":"${{ env.IMAGE }}", "registry_url":"${{ env.REGISTRY }}", "tag":"${{ env.VERSION }}"}'
 
-    # Set build status TODO  
-    - uses: martialonline/workflow-status@v2
-      id: check
-    - run: |
-        echo "release status: ${{  steps.check.outputs.status  }}"
-        echo "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}"
+    - name: Create github release
+      if: github.event_name == 'workflow_dispatch'
+      uses: meeDamian/github-release@2.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ env.VERSION }}
+        gzip: false
