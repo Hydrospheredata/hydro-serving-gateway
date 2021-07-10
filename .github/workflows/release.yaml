@@ -1,4 +1,4 @@
-name: release
+name: Release
 on:
   push:
     branches:
@@ -33,7 +33,7 @@ on:
 #   HYDRO_SERVING_TOKEN - github token with write access to hydro-serving repo
 
 env:
-  HYDRO_SERVING_REPO: Hydrospheredata/hydro-serving
+  HYDRO_SERVING_REPO: ${{ github.repository_owner }}/hydro-serving
   IMAGE: serving-gateway # name of the built image
   REGISTRY: hydrosphere
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -117,7 +117,7 @@ jobs:
       run: "sbt -DappVersion=${{ env.VERSION }} docker"
 
 
-    ## Personal - remove after complete or not
+    ## Retag image for fork repo
     - name: Retag image
       run: "docker tag hydrosphere/${{ env.IMAGE }}:${{ env.VERSION }} ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}"
 
@@ -137,13 +137,16 @@ jobs:
         git commit -m "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}" -a
         git push
           
-    - name: Tag commit
+    - name: Reports
+      id: generate-output
+      run: echo "::set-output name=tag-output::${{ env.VERSION }}"
+
+    - name: Create github release
       if: github.event_name == 'workflow_dispatch'
-      run: "git tag ${{ env.VERSION }}"
-      
-    - name: Push tag
-      if: github.event_name == 'workflow_dispatch'
-      run: "git push --tags"
+      uses: meeDamian/github-release@2.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ env.VERSION }}
 
     # Update docker compose and helm only for merge-request 
     - name: Update image version in hydro-serving repo
@@ -155,9 +158,5 @@ jobs:
         repo: ${{ env.HYDRO_SERVING_REPO }}
         inputs: '{"service_image_name":"${{ env.IMAGE }}", "registry_url":"${{ env.REGISTRY }}", "tag":"${{ env.VERSION }}"}'
 
-    # Set build status TODO  
-    - uses: martialonline/workflow-status@v2
-      id: check
-    - run: |
-        echo "release status: ${{  steps.check.outputs.status  }}"
-        echo "Releasing ${{ env.IMAGE }}:${{ env.VERSION }}"
+    outputs:
+      tag: ${{ steps.generate-output.outputs.tag-output }}
