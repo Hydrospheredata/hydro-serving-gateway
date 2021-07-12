@@ -39,10 +39,26 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
 jobs:
-  Build_and_publish: # Use for merge release, build and push image and set tag, update helm and compose. Depends on release type
-    if: |
-     github.event_name == 'workflow_dispatch' || 
-     github.event_name == 'push'
+  Verify_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get latest tag
+        id: get-latest-tag
+        uses: actions-ecosystem/action-get-latest-tag@v1
+
+    outputs:
+      latest_version: ${{ steps.get-latest-tag.outputs.tag }}
+
+  Build_and_publish:
+    needs: Verify_version
+    if: >
+      needs.Verify_version.outputs.latest_version != github.event.inputs.version && (
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'push')
+
     runs-on: ubuntu-latest
 
     steps:

@@ -3,8 +3,8 @@ logLevel := Level.Info
 addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.3.18")
 addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.9.0")
 addSbtPlugin("com.typesafe.sbt" % "sbt-git" % "1.0.0")
-addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.5.0")
-addSbtPlugin("com.codecommit" % "sbt-github-packages" % "0.5.3")
+addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.8.2")
+//addSbtPlugin("com.codecommit" % "sbt-github-packages" % "0.5.3")
 
 libraryDependencies ++= Seq(
   "com.thesamet.scalapb" %% "compilerplugin" % "0.11.3",

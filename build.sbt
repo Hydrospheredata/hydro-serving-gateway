@@ -4,8 +4,8 @@ import Keys._
 name := "serving-gateway"
 version := sys.props.getOrElse("appVersion", IO.read(file("version")).trim)
 
-githubOwner := "Hydrospheredata"
-githubRepository := "hydro-serving-protos"
+//githubOwner := "Hydrospheredata"
+//githubRepository := "hydro-serving-protos"
 
 organization := "io.hydrosphere.serving"
 organizationName := "hydrosphere"
@@ -33,9 +33,10 @@ scalacOptions ++= Seq(
 )
 mainClass in Compile := Some("io.hydrosphere.serving.gateway.Main")
 
-externalResolvers += "Hydrosphere packages" at "https://maven.pkg.github.com/Hydrospheredata/hydro-serving-protos"
-resolvers += Resolver.bintrayRepo("findify", "maven")
-resolvers += Resolver.bintrayRepo("hseeberger", "maven")
+resolvers += Resolver.sonatypeRepo("public")
+resolvers += Resolver.sonatypeRepo("releases")
+// resolvers += Resolver.bintrayRepo("findify", "maven")
+// resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 
 libraryDependencies ++= Dependencies.all
 
@@ -48,7 +49,7 @@ dockerfile in docker := {
   val jarTarget = s"/hydro-serving/app/app.jar"
 
   new Dockerfile {
-    from("openjdk:8-jre-alpine")
+    from("adoptopenjdk:11.0.11_9-jdk-hotspot")
 
     env("APP_PORT", "9090")
 
