@@ -36,7 +36,6 @@ env:
   HYDRO_SERVING_REPO: ${{ github.repository_owner }}/hydro-serving
   IMAGE: serving-gateway # name of the built image
   REGISTRY: hydrosphere
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
 jobs:
   Verify_version:
@@ -109,7 +108,7 @@ jobs:
     # Bump dependencies
     - name: Bump grpc
       if: github.event.inputs.grpc_version == ''
-      run: echo GRPC_VERSION=$(curl -s https://search.maven.org/solrsearch/select\?q\=g:%22io.hydrosphere%22+AND+a:%22serving-grpc-scala_2.13%22\&core\=gav\&rows\=1\&wt\=json | jq -r '.response.docs[].v') >> $GITHUB_ENV
+      run: echo GRPC_VERSION=$(curl --silent "https://api.github.com/repos/Hydrospheredata/hydro-serving-protos/releases/latest" | jq -r .tag_name) >> $GITHUB_ENV
 
     - name: Set grpc from inputs
       if: github.event.inputs.grpc_version != ''
@@ -131,7 +130,6 @@ jobs:
 
     - name: Build image
       run: "sbt -DappVersion=${{ env.VERSION }} docker"
-
 
     ## Retag image for fork repo
     - name: Retag image
@@ -176,3 +174,4 @@ jobs:
 
     outputs:
       tag: ${{ steps.generate-output.outputs.tag-output }}
+      grpc_version: ${{ env.GRPC_VERSION }}
