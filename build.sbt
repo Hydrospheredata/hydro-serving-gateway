@@ -49,7 +49,7 @@ dockerfile in docker := {
   val jarTarget = s"/hydro-serving/app/app.jar"
 
   new Dockerfile {
-    from("adoptopenjdk:11.0.11_9-jdk-hotspot")
+    from("openjdk:16-ea-23-jdk-oracle")
 
     env("APP_PORT", "9090")
 
