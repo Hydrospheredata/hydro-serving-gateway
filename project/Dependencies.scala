@@ -7,7 +7,7 @@ object Dependencies {
 
   val log4j2Version = "2.13.3"
   val scalaTestVersion = "3.2.2"
-  val servingGrpcScala = "3.0.0-alpha.10"
+  val servingGrpcScala  = "3.0.0"
   val kafkaApiVersion = "2.8.0"
   val catsEffectVersion = "2.2.0"
   val fs2Version = "2.4.4"
