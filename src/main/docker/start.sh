@@ -35,4 +35,4 @@ else
    echo "with config file config.file=$CUSTOM_CONFIG"
 fi
 
-java $JAVA_OPTS $APP_OPTS -cp "/hydro-serving/app/app.jar:/hydro-serving/app/lib/*" io.hydrosphere.serving.gateway.Main
+java $JAVA_OPTS $APP_OPTS -cp "app.jar:./lib/*" io.hydrosphere.serving.gateway.Main
