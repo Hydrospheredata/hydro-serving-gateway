@@ -46,20 +46,29 @@ dockerfile in docker := {
   val jarFile: File = sbt.Keys.`package`.in(Compile, packageBin).value
   val classpath = (dependencyClasspath in Compile).value
   val dockerFilesLocation = baseDirectory.value / "src/main/docker/"
-  val jarTarget = s"/hydro-serving/app/app.jar"
+  val jarTarget = "app.jar"
 
   new Dockerfile {
-    from("openjdk:16-ea-23-jdk-oracle")
+    from("openjdk:17-ea-jdk-alpine3.14")
+
+    label("maintainer", "support@hydrosphere.io")
 
     env("APP_PORT", "9090")
 
-    add(dockerFilesLocation, "/hydro-serving/app/")
+    run("apk", "update")
+    run("apk", "add", "--no-cache", "apk-tools>=2.12.7", "libcrypto1.1>=1.1.1", "libssl1.1>=1.1.1", "openssl>=1.1.1")
+    run("rm", "-rf", "/var/cache/apk/*")
+
+    workDir("/hydro-serving/app/")
+
+    copy(dockerFilesLocation, "./", "--chown=daemon:daemon")
     // Add all files on the classpath
-    add(classpath.files, "/hydro-serving/app/lib/")
+    copy(classpath.files, "./lib/", "--chown=daemon:daemon")
     // Add the JAR file
-    add(jarFile, jarTarget)
+    copy(jarFile, jarTarget, "--chown=daemon:daemon")
 
     volume("/model")
+    user("daemon")
     cmd("/hydro-serving/app/start.sh")
   }
 }
