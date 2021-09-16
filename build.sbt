@@ -64,11 +64,11 @@ dockerfile in docker := {
 
     workDir("/hydro-serving/app/")
 
-    copy(dockerFilesLocation, "./", "--chown=daemon:daemon")
+    copy(dockerFilesLocation, "./", "daemon:daemon")
     // Add all files on the classpath
-    copy(classpath.files, "./lib/", "--chown=daemon:daemon")
+    copy(classpath.files, "./lib/", "daemon:daemon")
     // Add the JAR file
-    copy(jarFile, jarTarget, "--chown=daemon:daemon")
+    copy(jarFile, jarTarget, "daemon:daemon")
 
     volume("/model")
     user("daemon")
