@@ -42,6 +42,9 @@ libraryDependencies ++= Dependencies.all
 
 enablePlugins(sbtdocker.DockerPlugin)
 
+daemonUserUid in Docker := None
+daemonUser in Docker    := "daemon"
+
 dockerfile in docker := {
   val jarFile: File = sbt.Keys.`package`.in(Compile, packageBin).value
   val classpath = (dependencyClasspath in Compile).value
@@ -56,16 +59,16 @@ dockerfile in docker := {
     env("APP_PORT", "9090")
 
     run("apk", "update")
-    run("apk", "add", "--no-cache", "apk-tools>=2.12.7", "libcrypto1.1>=1.1.1", "libssl1.1>=1.1.1", "openssl>=1.1.1")
+    run("apk", "add", "--no-cache", "apk-tools>=2.12.7", "libcrypto1.1>=1.1.1l-r0", "libssl1.1>=1.1.1l-r0", "openssl>=1.1.1l-r0")
     run("rm", "-rf", "/var/cache/apk/*")
 
     workDir("/hydro-serving/app/")
 
-    copy(dockerFilesLocation, "./", "--chown=daemon:daemon")
+    copy(dockerFilesLocation, "./", "daemon:daemon")
     // Add all files on the classpath
-    copy(classpath.files, "./lib/", "--chown=daemon:daemon")
+    copy(classpath.files, "./lib/", "daemon:daemon")
     // Add the JAR file
-    copy(jarFile, jarTarget, "--chown=daemon:daemon")
+    copy(jarFile, jarTarget, "daemon:daemon")
 
     volume("/model")
     user("daemon")
