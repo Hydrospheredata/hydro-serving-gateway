@@ -5,7 +5,7 @@ object Dependencies {
   val akkaHttpVersion = "10.2.0"
   val akkaHttpJsonVersion = "1.36.0"
 
-  val log4j2Version = "2.13.3"
+  val log4j2Version = "2.16.0"
   val scalaTestVersion = "3.2.2"
   val servingGrpcScala  = "3.0.0"
   val kafkaApiVersion = "2.8.0"
